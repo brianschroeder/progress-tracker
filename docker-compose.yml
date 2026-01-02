@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  goal-tracker:
+    build: .
+    container_name: goal-tracker
+    ports:
+      - "3501:3501"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3501
+      - DB_PATH=/app/data/goals.db
+    restart: unless-stopped
