@@ -22,6 +22,10 @@ export async function POST(request: NextRequest) {
       isCompleted: body.isCompleted || false,
       progress: body.progress || 0,
       color: body.color,
+      sortOrder: body.sortOrder || 0,
+      trackingMode: body.trackingMode || 'percentage',
+      currentCount: body.currentCount || 0,
+      targetCount: body.targetCount || 0,
     };
 
     const id = createYearGoal(goal);

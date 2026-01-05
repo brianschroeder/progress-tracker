@@ -108,6 +108,9 @@ export default function YearGoalsPage() {
         category: 'Career',
         targetDate: '',
         color: '#3B82F6',
+        trackingMode: 'percentage',
+        currentCount: 0,
+        targetCount: 0,
       });
     } catch (error) {
       console.error('Failed to save goal:', error);
@@ -284,6 +287,18 @@ export default function YearGoalsPage() {
   const totalGoals = goals.length;
   const completionRate = totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0;
 
+  // Calculate days remaining in the year
+  const today = new Date();
+  const endOfYear = new Date(currentYear, 11, 31); // December 31st
+  const daysRemaining = Math.ceil((endOfYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const totalDaysInYear = 365 + (new Date(currentYear, 1, 29).getMonth() === 1 ? 1 : 0); // Check for leap year
+  const daysPassed = totalDaysInYear - daysRemaining;
+  const yearProgress = Math.round((daysPassed / totalDaysInYear) * 100);
+
+  // Separate goals by tracking mode
+  const countGoals = goals.filter(g => g.trackingMode === 'count');
+  const percentageGoals = goals.filter(g => g.trackingMode !== 'count');
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <div className="max-w-5xl mx-auto px-6 py-12">
@@ -302,6 +317,31 @@ export default function YearGoalsPage() {
               </span>
               ?
             </p>
+          </div>
+        </div>
+
+        {/* Days Remaining Banner */}
+        <div className="mb-8">
+          <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-accent/10 rounded-2xl p-6 border border-accent/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="text-5xl">⏳</div>
+                <div>
+                  <div className="text-4xl font-bold text-accent mb-1">{daysRemaining}</div>
+                  <div className="text-sm font-medium text-neutral-600">Days Remaining in {currentYear}</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-semibold text-neutral-800 mb-1">{yearProgress}%</div>
+                <div className="text-xs text-neutral-500">Year Complete</div>
+                <div className="w-48 h-2 bg-neutral-200 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
+                    style={{ width: `${yearProgress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -359,210 +399,376 @@ export default function YearGoalsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {goals.map((goal, index) => (
-              <div
-                key={goal.id}
-                className={`bg-white rounded-xl shadow-soft border-2 transition-smooth hover:shadow-medium ${
-                  goal.isCompleted 
-                    ? 'border-success/40 bg-gradient-to-br from-success/5 to-success/10' 
-                    : 'border-neutral-200 hover:border-accent/30'
-                }`}
-              >
-                {/* Vertical Card Layout */}
-                <div className="p-4 space-y-3">
-                  {/* Header with Complete Checkbox */}
-                  <div className="flex items-start justify-between">
-                    {editMode && (
-                      <div className="flex items-center space-x-2">
-                        {/* Reorder Buttons - Only in Edit Mode */}
-                        <button
-                          onClick={() => moveGoalUp(index)}
-                          disabled={index === 0}
-                          className={`p-1.5 rounded-lg transition-smooth ${
-                            index === 0
-                              ? 'text-neutral-200 cursor-not-allowed'
-                              : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
-                          }`}
-                          title="Move up"
-                        >
-                          <ChevronUpIcon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => moveGoalDown(index)}
-                          disabled={index === goals.length - 1}
-                          className={`p-1.5 rounded-lg transition-smooth ${
-                            index === goals.length - 1
-                              ? 'text-neutral-200 cursor-not-allowed'
-                              : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
-                          }`}
-                          title="Move down"
-                        >
-                          <ChevronDownIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
+          <div className="space-y-12">
+            {/* Count-Based Goals Section */}
+            {countGoals.length > 0 && (
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="h-px bg-gradient-to-r from-transparent via-accent to-transparent flex-1"></div>
+                  <h2 className="text-2xl font-semibold text-neutral-800 flex items-center gap-2">
+                    <span className="text-2xl">🔢</span>
+                    Count-Based Goals
+                    <span className="text-sm font-normal text-neutral-500 ml-1">({countGoals.length})</span>
+                  </h2>
+                  <div className="h-px bg-gradient-to-r from-accent via-accent to-transparent flex-1"></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {countGoals.map((goal, index) => {
+                    const globalIndex = goals.findIndex(g => g.id === goal.id);
+                    return (
+                      <div
+                        key={goal.id}
+                        className={`bg-white rounded-xl shadow-soft border-2 transition-smooth hover:shadow-medium ${
+                          goal.isCompleted 
+                            ? 'border-success/40 bg-gradient-to-br from-success/5 to-success/10' 
+                            : 'border-neutral-200 hover:border-accent/30'
+                        }`}
+                      >
+                        {/* Vertical Card Layout */}
+                        <div className="p-4 space-y-3">
+                          {/* Header with Complete Checkbox */}
+                          <div className="flex items-start justify-between">
+                            {editMode && (
+                              <div className="flex items-center space-x-2">
+                                {/* Reorder Buttons - Only in Edit Mode */}
+                                <button
+                                  onClick={() => moveGoalUp(globalIndex)}
+                                  disabled={globalIndex === 0}
+                                  className={`p-1.5 rounded-lg transition-smooth ${
+                                    globalIndex === 0
+                                      ? 'text-neutral-200 cursor-not-allowed'
+                                      : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
+                                  }`}
+                                  title="Move up"
+                                >
+                                  <ChevronUpIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => moveGoalDown(globalIndex)}
+                                  disabled={globalIndex === goals.length - 1}
+                                  className={`p-1.5 rounded-lg transition-smooth ${
+                                    globalIndex === goals.length - 1
+                                      ? 'text-neutral-200 cursor-not-allowed'
+                                      : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
+                                  }`}
+                                  title="Move down"
+                                >
+                                  <ChevronDownIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
 
-                    {/* Checkbox */}
-                    <button
-                      onClick={() => toggleComplete(goal.id!)}
-                      className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-smooth ${
-                        goal.isCompleted
-                          ? 'bg-success text-white'
-                          : 'bg-neutral-100 border-2 border-neutral-200 hover:border-accent'
-                      } ${!editMode ? 'ml-auto' : ''}`}
-                    >
-                      {goal.isCompleted && <CheckCircleIcon className="w-6 h-6" />}
-                    </button>
-                  </div>
+                            {/* Checkbox */}
+                            <button
+                              onClick={() => toggleComplete(goal.id!)}
+                              className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-smooth ${
+                                goal.isCompleted
+                                  ? 'bg-success text-white'
+                                  : 'bg-neutral-100 border-2 border-neutral-200 hover:border-accent'
+                              } ${!editMode ? 'ml-auto' : ''}`}
+                            >
+                              {goal.isCompleted && <CheckCircleIcon className="w-6 h-6" />}
+                            </button>
+                          </div>
 
-                  {/* Title */}
-                  <div>
-                    <div className="flex items-start space-x-2">
-                      <h3 className={`text-lg font-bold flex-1 ${
-                        goal.isCompleted ? 'text-success line-through' : 'text-neutral-900'
-                      }`}>
-                        {goal.title}
-                      </h3>
-                      {goal.description && (
-                        <button
-                          onClick={() => goal.id && toggleExpanded(goal.id)}
-                          className="p-1 hover:bg-accent/10 rounded-lg transition-smooth flex-shrink-0"
-                          title={expandedGoals.has(goal.id!) ? 'Hide details' : 'Show details'}
-                        >
-                          <ChevronDownIcon 
-                            className={`w-4 h-4 text-accent transition-transform ${
-                              expandedGoals.has(goal.id!) ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Description */}
-                  {goal.description && expandedGoals.has(goal.id!) && (
-                    <p className="text-xs text-neutral-600 leading-relaxed bg-neutral-50 p-2.5 rounded-lg border border-neutral-200">
-                      {goal.description}
-                    </p>
-                  )}
-                  
-                  {/* Meta Info */}
-                  <div className="flex flex-col gap-2">
-                    <span
-                      className="px-3 py-1 rounded-full font-semibold text-xs inline-block w-fit"
-                      style={{ 
-                        backgroundColor: `${goal.color}20`,
-                        color: goal.color,
-                        border: `1px solid ${goal.color}40`
-                      }}
-                    >
-                      {goal.category}
-                    </span>
-                    {goal.targetDate && (
-                      <span className="text-xs text-neutral-500">
-                        <span className="font-medium">Target:</span>{' '}
-                        <span className="font-semibold text-neutral-700">
-                          {new Date(goal.targetDate).toLocaleDateString()}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Progress */}
-                  {!goal.isCompleted && (
-                    <div className="pt-3 border-t border-neutral-200">
-                      {goal.trackingMode === 'count' ? (
-                        <>
-                          {/* Count Mode */}
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-semibold text-neutral-600">Count Progress</span>
-                            <span className="text-sm font-bold text-accent">{goal.progress || 0}%</span>
+                          {/* Title */}
+                          <div>
+                            <div className="flex items-start space-x-2">
+                              <h3 className={`text-lg font-bold flex-1 ${
+                                goal.isCompleted ? 'text-success line-through' : 'text-neutral-900'
+                              }`}>
+                                {goal.title}
+                              </h3>
+                              {goal.description && (
+                                <button
+                                  onClick={() => goal.id && toggleExpanded(goal.id)}
+                                  className="p-1 hover:bg-accent/10 rounded-lg transition-smooth flex-shrink-0"
+                                  title={expandedGoals.has(goal.id!) ? 'Hide details' : 'Show details'}
+                                >
+                                  <ChevronDownIcon 
+                                    className={`w-4 h-4 text-accent transition-transform ${
+                                      expandedGoals.has(goal.id!) ? 'rotate-180' : ''
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </div>
                           </div>
                           
-                          <div className="flex items-center gap-3 mb-3">
-                            <button
-                              onClick={() => goal.id && updateCount(goal.id, false)}
-                              className="w-10 h-10 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-700 font-bold text-lg transition-smooth"
+                          {/* Description */}
+                          {goal.description && expandedGoals.has(goal.id!) && (
+                            <p className="text-xs text-neutral-600 leading-relaxed bg-neutral-50 p-2.5 rounded-lg border border-neutral-200">
+                              {goal.description}
+                            </p>
+                          )}
+                          
+                          {/* Meta Info */}
+                          <div className="flex flex-col gap-2">
+                            <span
+                              className="px-3 py-1 rounded-full font-semibold text-xs inline-block w-fit"
+                              style={{ 
+                                backgroundColor: `${goal.color}20`,
+                                color: goal.color,
+                                border: `1px solid ${goal.color}40`
+                              }}
                             >
-                              −
-                            </button>
-                            
-                            <div className="flex-1 text-center">
-                              <input
-                                type="number"
-                                value={goal.currentCount || 0}
-                                onChange={(e) => goal.id && setCount(goal.id, parseInt(e.target.value) || 0)}
-                                className="w-full text-center text-2xl font-bold text-accent bg-neutral-50 border-2 border-neutral-200 rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-accent/50"
-                                min="0"
-                              />
-                              <div className="text-xs text-neutral-500 mt-1">
-                                of {goal.targetCount || 0}
+                              {goal.category}
+                            </span>
+                            {goal.targetDate && (
+                              <span className="text-xs text-neutral-500">
+                                <span className="font-medium">Target:</span>{' '}
+                                <span className="font-semibold text-neutral-700">
+                                  {new Date(goal.targetDate).toLocaleDateString()}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress - Count Mode */}
+                          {!goal.isCompleted && (
+                            <div className="pt-3 border-t border-neutral-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-semibold text-neutral-600">Count Progress</span>
+                                <span className="text-sm font-bold text-accent">{goal.progress || 0}%</span>
+                              </div>
+                              
+                              <div className="flex items-center gap-3 mb-3">
+                                <button
+                                  onClick={() => goal.id && updateCount(goal.id, false)}
+                                  className="w-10 h-10 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-700 font-bold text-lg transition-smooth"
+                                >
+                                  −
+                                </button>
+                                
+                                <div className="flex-1 text-center">
+                                  <input
+                                    type="number"
+                                    value={goal.currentCount || 0}
+                                    onChange={(e) => goal.id && setCount(goal.id, parseInt(e.target.value) || 0)}
+                                    className="w-full text-center text-2xl font-bold text-accent bg-neutral-50 border-2 border-neutral-200 rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-accent/50"
+                                    min="0"
+                                  />
+                                  <div className="text-xs text-neutral-500 mt-1">
+                                    of {goal.targetCount || 0}
+                                  </div>
+                                </div>
+                                
+                                <button
+                                  onClick={() => goal.id && updateCount(goal.id, true)}
+                                  className="w-10 h-10 rounded-lg bg-accent hover:bg-accent-light flex items-center justify-center text-white font-bold text-lg transition-smooth"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              
+                              <div className="w-full bg-neutral-200 rounded-full h-2 shadow-inner">
+                                <div
+                                  className="h-2 rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
+                                  style={{ width: `${Math.min(goal.progress || 0, 100)}%` }}
+                                />
                               </div>
                             </div>
-                            
-                            <button
-                              onClick={() => goal.id && updateCount(goal.id, true)}
-                              className="w-10 h-10 rounded-lg bg-accent hover:bg-accent-light flex items-center justify-center text-white font-bold text-lg transition-smooth"
-                            >
-                              +
-                            </button>
-                          </div>
-                          
-                          <div className="w-full bg-neutral-200 rounded-full h-2 shadow-inner">
-                            <div
-                              className="h-2 rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
-                              style={{ width: `${Math.min(goal.progress || 0, 100)}%` }}
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          {/* Percentage Mode */}
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-neutral-600">Progress</span>
-                            <span className="text-sm font-bold text-accent">{goal.progress || 0}%</span>
-                          </div>
-                          <div className="w-full bg-neutral-200 rounded-full h-2 shadow-inner mb-2">
-                            <div
-                              className="h-2 rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
-                              style={{ width: `${goal.progress || 0}%` }}
-                            />
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={goal.progress || 0}
-                            onChange={(e) => goal.id && updateProgress(goal.id, parseInt(e.target.value))}
-                            className="w-full h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-accent"
-                          />
-                        </>
-                      )}
-                    </div>
-                  )}
+                          )}
 
-                  {/* Edit/Delete Buttons - Only in Edit Mode */}
-                  {editMode && (
-                    <div className="pt-3 border-t border-neutral-200 flex gap-2">
-                      <button
-                        onClick={() => openEditModal(goal)}
-                        className="flex-1 px-3 py-2 text-xs font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-smooth"
-                      >
-                        Edit Goal
-                      </button>
-                      <button
-                        onClick={() => goal.id && handleDelete(goal.id)}
-                        className="px-3 py-2 text-xs font-medium text-danger bg-danger/10 hover:bg-danger/20 rounded-lg transition-smooth"
-                        title="Delete goal"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
+                          {/* Edit/Delete Buttons - Only in Edit Mode */}
+                          {editMode && (
+                            <div className="pt-3 border-t border-neutral-200 flex gap-2">
+                              <button
+                                onClick={() => openEditModal(goal)}
+                                className="flex-1 px-3 py-2 text-xs font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-smooth"
+                              >
+                                Edit Goal
+                              </button>
+                              <button
+                                onClick={() => goal.id && handleDelete(goal.id)}
+                                className="px-3 py-2 text-xs font-medium text-danger bg-danger/10 hover:bg-danger/20 rounded-lg transition-smooth"
+                                title="Delete goal"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+            )}
+
+            {/* Percentage-Based Goals Section */}
+            {percentageGoals.length > 0 && (
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="h-px bg-gradient-to-r from-transparent via-accent to-transparent flex-1"></div>
+                  <h2 className="text-2xl font-semibold text-neutral-800 flex items-center gap-2">
+                    <span className="text-2xl">📊</span>
+                    Percentage-Based Goals
+                    <span className="text-sm font-normal text-neutral-500 ml-1">({percentageGoals.length})</span>
+                  </h2>
+                  <div className="h-px bg-gradient-to-r from-accent via-accent to-transparent flex-1"></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {percentageGoals.map((goal) => {
+                    const globalIndex = goals.findIndex(g => g.id === goal.id);
+                    return (
+                      <div
+                        key={goal.id}
+                        className={`bg-white rounded-xl shadow-soft border-2 transition-smooth hover:shadow-medium ${
+                          goal.isCompleted 
+                            ? 'border-success/40 bg-gradient-to-br from-success/5 to-success/10' 
+                            : 'border-neutral-200 hover:border-accent/30'
+                        }`}
+                      >
+                        {/* Vertical Card Layout */}
+                        <div className="p-4 space-y-3">
+                          {/* Header with Complete Checkbox */}
+                          <div className="flex items-start justify-between">
+                            {editMode && (
+                              <div className="flex items-center space-x-2">
+                                {/* Reorder Buttons - Only in Edit Mode */}
+                                <button
+                                  onClick={() => moveGoalUp(globalIndex)}
+                                  disabled={globalIndex === 0}
+                                  className={`p-1.5 rounded-lg transition-smooth ${
+                                    globalIndex === 0
+                                      ? 'text-neutral-200 cursor-not-allowed'
+                                      : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
+                                  }`}
+                                  title="Move up"
+                                >
+                                  <ChevronUpIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => moveGoalDown(globalIndex)}
+                                  disabled={globalIndex === goals.length - 1}
+                                  className={`p-1.5 rounded-lg transition-smooth ${
+                                    globalIndex === goals.length - 1
+                                      ? 'text-neutral-200 cursor-not-allowed'
+                                      : 'text-neutral-400 hover:text-accent hover:bg-accent/10'
+                                  }`}
+                                  title="Move down"
+                                >
+                                  <ChevronDownIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Checkbox */}
+                            <button
+                              onClick={() => toggleComplete(goal.id!)}
+                              className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-smooth ${
+                                goal.isCompleted
+                                  ? 'bg-success text-white'
+                                  : 'bg-neutral-100 border-2 border-neutral-200 hover:border-accent'
+                              } ${!editMode ? 'ml-auto' : ''}`}
+                            >
+                              {goal.isCompleted && <CheckCircleIcon className="w-6 h-6" />}
+                            </button>
+                          </div>
+
+                          {/* Title */}
+                          <div>
+                            <div className="flex items-start space-x-2">
+                              <h3 className={`text-lg font-bold flex-1 ${
+                                goal.isCompleted ? 'text-success line-through' : 'text-neutral-900'
+                              }`}>
+                                {goal.title}
+                              </h3>
+                              {goal.description && (
+                                <button
+                                  onClick={() => goal.id && toggleExpanded(goal.id)}
+                                  className="p-1 hover:bg-accent/10 rounded-lg transition-smooth flex-shrink-0"
+                                  title={expandedGoals.has(goal.id!) ? 'Hide details' : 'Show details'}
+                                >
+                                  <ChevronDownIcon 
+                                    className={`w-4 h-4 text-accent transition-transform ${
+                                      expandedGoals.has(goal.id!) ? 'rotate-180' : ''
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Description */}
+                          {goal.description && expandedGoals.has(goal.id!) && (
+                            <p className="text-xs text-neutral-600 leading-relaxed bg-neutral-50 p-2.5 rounded-lg border border-neutral-200">
+                              {goal.description}
+                            </p>
+                          )}
+                          
+                          {/* Meta Info */}
+                          <div className="flex flex-col gap-2">
+                            <span
+                              className="px-3 py-1 rounded-full font-semibold text-xs inline-block w-fit"
+                              style={{ 
+                                backgroundColor: `${goal.color}20`,
+                                color: goal.color,
+                                border: `1px solid ${goal.color}40`
+                              }}
+                            >
+                              {goal.category}
+                            </span>
+                            {goal.targetDate && (
+                              <span className="text-xs text-neutral-500">
+                                <span className="font-medium">Target:</span>{' '}
+                                <span className="font-semibold text-neutral-700">
+                                  {new Date(goal.targetDate).toLocaleDateString()}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress - Percentage Mode */}
+                          {!goal.isCompleted && (
+                            <div className="pt-3 border-t border-neutral-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-semibold text-neutral-600">Progress</span>
+                                <span className="text-sm font-bold text-accent">{goal.progress || 0}%</span>
+                              </div>
+                              <div className="w-full bg-neutral-200 rounded-full h-2 shadow-inner mb-2">
+                                <div
+                                  className="h-2 rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-500"
+                                  style={{ width: `${goal.progress || 0}%` }}
+                                />
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                value={goal.progress || 0}
+                                onChange={(e) => goal.id && updateProgress(goal.id, parseInt(e.target.value))}
+                                className="w-full h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-accent"
+                              />
+                            </div>
+                          )}
+
+                          {/* Edit/Delete Buttons - Only in Edit Mode */}
+                          {editMode && (
+                            <div className="pt-3 border-t border-neutral-200 flex gap-2">
+                              <button
+                                onClick={() => openEditModal(goal)}
+                                className="flex-1 px-3 py-2 text-xs font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-smooth"
+                              >
+                                Edit Goal
+                              </button>
+                              <button
+                                onClick={() => goal.id && handleDelete(goal.id)}
+                                className="px-3 py-2 text-xs font-medium text-danger bg-danger/10 hover:bg-danger/20 rounded-lg transition-smooth"
+                                title="Delete goal"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

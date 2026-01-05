@@ -54,6 +54,7 @@ export interface UserSettings {
   dailyGoalReminder: boolean;
   reminderTime?: string;
   theme: 'light' | 'dark';
+  menuOrder?: string; // JSON string of menu item paths in order
   createdAt?: string;
   updatedAt?: string;
 }
@@ -94,6 +95,16 @@ export interface Todo {
   isCompleted: boolean;
   priority: 'low' | 'medium' | 'high';
   dueDate?: string; // YYYY-MM-DD
+  sortOrder: number;
+  createdAt?: string;
+}
+
+export interface ShoppingListItem {
+  id?: number;
+  name: string;
+  quantity?: string;
+  category?: string; // e.g., "Produce", "Dairy", "Pantry"
+  isChecked: boolean;
   sortOrder: number;
   createdAt?: string;
 }

@@ -74,6 +74,7 @@ function initializeDatabase() {
       weekStartsOn INTEGER DEFAULT 0,
       theme TEXT DEFAULT 'light',
       notificationsEnabled BOOLEAN DEFAULT 0,
+      menuOrder TEXT,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -122,6 +123,19 @@ function initializeDatabase() {
       milestones TEXT,
       isCompleted BOOLEAN NOT NULL DEFAULT 0,
       color TEXT NOT NULL,
+      sortOrder INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create shopping_list table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS shopping_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      quantity TEXT,
+      category TEXT,
+      isChecked BOOLEAN NOT NULL DEFAULT 0,
       sortOrder INTEGER DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -546,12 +560,14 @@ export function updateUserSettings(settings: Partial<UserSettings>): boolean {
     SET weekStartsOn = COALESCE(@weekStartsOn, weekStartsOn),
         theme = COALESCE(@theme, theme),
         notificationsEnabled = COALESCE(@notificationsEnabled, notificationsEnabled),
+        menuOrder = COALESCE(@menuOrder, menuOrder),
         updatedAt = CURRENT_TIMESTAMP
     WHERE id = 1
   `).run({
     weekStartsOn: settings.weekStartsOn ?? null,
     theme: settings.theme ?? null,
     notificationsEnabled: settings.notificationsEnabled !== undefined ? (settings.notificationsEnabled ? 1 : 0) : null,
+    menuOrder: settings.menuOrder ?? null,
   });
 
   return result.changes > 0;
@@ -570,6 +586,10 @@ export interface YearGoal {
   isCompleted: boolean;
   progress: number;
   color: string;
+  sortOrder?: number;
+  trackingMode?: 'percentage' | 'count';
+  currentCount?: number;
+  targetCount?: number;
   createdAt?: string;
 }
 
@@ -837,6 +857,81 @@ export function reorderTodos(todoIds: number[]): boolean {
   })();
 
   return true;
+}
+
+// ==================== SHOPPING LIST MANAGEMENT ====================
+
+export function getAllShoppingItems() {
+  const database = getDB();
+  return database.prepare('SELECT * FROM shopping_list ORDER BY sortOrder ASC, createdAt DESC').all();
+}
+
+export function getShoppingItemById(id: number) {
+  const database = getDB();
+  return database.prepare('SELECT * FROM shopping_list WHERE id = ?').get(id);
+}
+
+export function createShoppingItem(item: any): number {
+  const database = getDB();
+  const result = database.prepare(`
+    INSERT INTO shopping_list (name, quantity, category, isChecked, sortOrder)
+    VALUES (@name, @quantity, @category, @isChecked, @sortOrder)
+  `).run({
+    name: item.name,
+    quantity: item.quantity || null,
+    category: item.category || null,
+    isChecked: item.isChecked ? 1 : 0,
+    sortOrder: item.sortOrder || 0,
+  });
+
+  return result.lastInsertRowid as number;
+}
+
+export function updateShoppingItem(item: any): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE shopping_list
+    SET name = @name,
+        quantity = @quantity,
+        category = @category,
+        isChecked = @isChecked,
+        sortOrder = @sortOrder
+    WHERE id = @id
+  `).run({
+    id: item.id,
+    name: item.name,
+    quantity: item.quantity || null,
+    category: item.category || null,
+    isChecked: item.isChecked ? 1 : 0,
+    sortOrder: item.sortOrder || 0,
+  });
+
+  return result.changes > 0;
+}
+
+export function deleteShoppingItem(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare('DELETE FROM shopping_list WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function reorderShoppingItems(itemIds: number[]): boolean {
+  const database = getDB();
+  const update = database.prepare('UPDATE shopping_list SET sortOrder = ? WHERE id = ?');
+  
+  database.transaction(() => {
+    itemIds.forEach((id, index) => {
+      update.run(index, id);
+    });
+  })();
+
+  return true;
+}
+
+export function clearCheckedShoppingItems(): boolean {
+  const database = getDB();
+  const result = database.prepare('DELETE FROM shopping_list WHERE isChecked = 1').run();
+  return result.changes > 0;
 }
 
 // Export database initialization function

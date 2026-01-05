@@ -10,7 +10,8 @@
     "initialize": "node scripts/setup-database.js",
     "migrate": "node scripts/migrate-add-days.js",
     "migrate:sortorder": "node scripts/migrate-add-sortorder-long-term.js",
-    "migrate:tracking": "node scripts/migrate-add-tracking-mode.js"
+    "migrate:tracking": "node scripts/migrate-add-tracking-mode.js",
+    "migrate:menuorder": "node scripts/migrate-add-menu-order.js"
   },
   "dependencies": {
     "next": "^14.2.0",

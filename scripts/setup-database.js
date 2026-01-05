@@ -65,6 +65,7 @@ db.exec(`
     weekStartsOn INTEGER DEFAULT 0,
     theme TEXT DEFAULT 'light',
     notificationsEnabled BOOLEAN DEFAULT 0,
+    menuOrder TEXT,
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -95,6 +96,34 @@ db.exec(`
     milestones TEXT,
     isCompleted BOOLEAN NOT NULL DEFAULT 0,
     color TEXT NOT NULL,
+    sortOrder INTEGER DEFAULT 0,
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create todos table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    isCompleted BOOLEAN NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    dueDate TEXT,
+    sortOrder INTEGER DEFAULT 0,
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create shopping_list table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shopping_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    quantity TEXT,
+    category TEXT,
+    isChecked BOOLEAN NOT NULL DEFAULT 0,
+    sortOrder INTEGER DEFAULT 0,
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);

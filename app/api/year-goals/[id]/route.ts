@@ -32,6 +32,10 @@ export async function PUT(
       isCompleted: body.isCompleted,
       progress: body.progress,
       color: body.color,
+      sortOrder: body.sortOrder,
+      trackingMode: body.trackingMode || 'percentage',
+      currentCount: body.currentCount || 0,
+      targetCount: body.targetCount || 0,
     };
 
     const success = updateYearGoal(goal);
