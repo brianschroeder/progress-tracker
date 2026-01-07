@@ -25,7 +25,9 @@ import {
   TrophyIcon as TrophyIconSolid,
   RocketLaunchIcon as RocketLaunchIconSolid,
   ShoppingCartIcon as ShoppingCartIconSolid,
+  BriefcaseIcon as BriefcaseIconSolid,
 } from '@heroicons/react/24/solid';
+import { BriefcaseIcon } from '@heroicons/react/24/outline';
 
 interface NavItem {
   name: string;
@@ -37,6 +39,7 @@ interface NavItem {
 const defaultNavItems: NavItem[] = [
   { name: 'Home', path: '/home', icon: HomeIcon, iconSolid: HomeIconSolid },
   { name: 'To-Do List', path: '/todos', icon: ListBulletIcon, iconSolid: ListBulletIconSolid },
+  { name: 'Work', path: '/work', icon: BriefcaseIcon, iconSolid: BriefcaseIconSolid },
   { name: 'Shopping List', path: '/shopping-list', icon: ShoppingCartIcon, iconSolid: ShoppingCartIconSolid },
   { name: 'Calendar', path: '/', icon: CalendarDaysIcon, iconSolid: CalendarDaysIconSolid },
   { name: 'Daily Focus', path: '/today', icon: CheckCircleIcon, iconSolid: CheckCircleIconSolid },

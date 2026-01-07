@@ -141,6 +141,35 @@ function initializeDatabase() {
     )
   `);
 
+  // Create work_goals table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS work_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      targetDate TEXT,
+      isCompleted BOOLEAN NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'medium',
+      color TEXT DEFAULT '#3B82F6',
+      sortOrder INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create work_todos table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS work_todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workGoalId INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      isCompleted BOOLEAN NOT NULL DEFAULT 0,
+      sortOrder INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workGoalId) REFERENCES work_goals(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create indexes for better performance
   database.exec(`CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(completionDate)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_completions_goalId ON completions(goalId)`);
@@ -907,6 +936,155 @@ export function updateShoppingItem(item: any): boolean {
   });
 
   return result.changes > 0;
+}
+
+// ==================== WORK GOALS MANAGEMENT ====================
+
+export function getAllWorkGoals() {
+  const database = getDB();
+  return database.prepare('SELECT * FROM work_goals ORDER BY sortOrder ASC, createdAt DESC').all();
+}
+
+export function getWorkGoalById(id: number) {
+  const database = getDB();
+  return database.prepare('SELECT * FROM work_goals WHERE id = ?').get(id);
+}
+
+export function createWorkGoal(workGoal: any): number {
+  const database = getDB();
+  const result = database.prepare(`
+    INSERT INTO work_goals (title, description, targetDate, isCompleted, priority, color, sortOrder)
+    VALUES (@title, @description, @targetDate, @isCompleted, @priority, @color, @sortOrder)
+  `).run({
+    title: workGoal.title,
+    description: workGoal.description || null,
+    targetDate: workGoal.targetDate || null,
+    isCompleted: workGoal.isCompleted ? 1 : 0,
+    priority: workGoal.priority || 'medium',
+    color: workGoal.color || '#3B82F6',
+    sortOrder: workGoal.sortOrder || 0,
+  });
+
+  return result.lastInsertRowid as number;
+}
+
+export function updateWorkGoal(workGoal: any): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_goals
+    SET title = @title,
+        description = @description,
+        targetDate = @targetDate,
+        isCompleted = @isCompleted,
+        priority = @priority,
+        color = @color,
+        sortOrder = @sortOrder
+    WHERE id = @id
+  `).run({
+    id: workGoal.id,
+    title: workGoal.title,
+    description: workGoal.description || null,
+    targetDate: workGoal.targetDate || null,
+    isCompleted: workGoal.isCompleted ? 1 : 0,
+    priority: workGoal.priority || 'medium',
+    color: workGoal.color || '#3B82F6',
+    sortOrder: workGoal.sortOrder || 0,
+  });
+
+  return result.changes > 0;
+}
+
+export function deleteWorkGoal(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare('DELETE FROM work_goals WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function reorderWorkGoals(workGoalIds: number[]): boolean {
+  const database = getDB();
+  const update = database.prepare('UPDATE work_goals SET sortOrder = ? WHERE id = ?');
+  
+  database.transaction(() => {
+    workGoalIds.forEach((id, index) => {
+      update.run(index, id);
+    });
+  })();
+
+  return true;
+}
+
+// ==================== WORK TODOS MANAGEMENT ====================
+
+export function getAllWorkTodos() {
+  const database = getDB();
+  return database.prepare('SELECT * FROM work_todos ORDER BY sortOrder ASC, createdAt DESC').all();
+}
+
+export function getWorkTodosByGoalId(workGoalId: number) {
+  const database = getDB();
+  return database.prepare('SELECT * FROM work_todos WHERE workGoalId = ? ORDER BY sortOrder ASC, createdAt DESC').all(workGoalId);
+}
+
+export function getWorkTodoById(id: number) {
+  const database = getDB();
+  return database.prepare('SELECT * FROM work_todos WHERE id = ?').get(id);
+}
+
+export function createWorkTodo(workTodo: any): number {
+  const database = getDB();
+  const result = database.prepare(`
+    INSERT INTO work_todos (workGoalId, title, description, isCompleted, sortOrder)
+    VALUES (@workGoalId, @title, @description, @isCompleted, @sortOrder)
+  `).run({
+    workGoalId: workTodo.workGoalId,
+    title: workTodo.title,
+    description: workTodo.description || null,
+    isCompleted: workTodo.isCompleted ? 1 : 0,
+    sortOrder: workTodo.sortOrder || 0,
+  });
+
+  return result.lastInsertRowid as number;
+}
+
+export function updateWorkTodo(workTodo: any): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_todos
+    SET workGoalId = @workGoalId,
+        title = @title,
+        description = @description,
+        isCompleted = @isCompleted,
+        sortOrder = @sortOrder
+    WHERE id = @id
+  `).run({
+    id: workTodo.id,
+    workGoalId: workTodo.workGoalId,
+    title: workTodo.title,
+    description: workTodo.description || null,
+    isCompleted: workTodo.isCompleted ? 1 : 0,
+    sortOrder: workTodo.sortOrder || 0,
+  });
+
+  return result.changes > 0;
+}
+
+export function deleteWorkTodo(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare('DELETE FROM work_todos WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function reorderWorkTodos(workTodoIds: number[]): boolean {
+  const database = getDB();
+  const update = database.prepare('UPDATE work_todos SET sortOrder = ? WHERE id = ?');
+  
+  database.transaction(() => {
+    workTodoIds.forEach((id, index) => {
+      update.run(index, id);
+    });
+  })();
+
+  return true;
 }
 
 export function deleteShoppingItem(id: number): boolean {

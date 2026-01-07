@@ -108,3 +108,26 @@ export interface ShoppingListItem {
   sortOrder: number;
   createdAt?: string;
 }
+
+export interface WorkGoal {
+  id?: number;
+  title: string;
+  description?: string;
+  targetDate: string; // YYYY-MM-DD
+  isCompleted: boolean;
+  priority: 'low' | 'medium' | 'high';
+  color: string;
+  sortOrder: number;
+  createdAt?: string;
+}
+
+export interface WorkTodo {
+  id?: number;
+  workGoalId: number;
+  title: string;
+  description?: string;
+  isCompleted: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  workGoal?: WorkGoal;
+}
