@@ -100,7 +100,7 @@ npm run migrate:tracking
 npm run dev
 ```
 
-Open [http://localhost:3501](http://localhost:3501) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Docker Setup
 
@@ -112,7 +112,7 @@ docker-compose up -d
 docker-compose down
 ```
 
-Open [http://localhost:3501](http://localhost:3501) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
@@ -350,7 +350,7 @@ progress-tracker/
 
 ```bash
 # Development
-npm run dev              # Start dev server (port 3501)
+npm run dev              # Start dev server (port 3000)
 npm run build            # Build for production
 npm run start            # Start production server
 npm run lint             # Run ESLint
@@ -416,7 +416,18 @@ docker-compose logs -f   # View logs
 
 ---
 
-## 📄 License
+## � Security
+
+- **Database**: SQLite database stored locally in the `data/` folder
+- **JIRA Integration**: API tokens are stored in the local database (not version controlled)
+- **No Cloud Storage**: All data remains on your local machine
+- **Environment Variables**: Use `.env` for sensitive configuration (see `.env.example`)
+
+**Important**: Never commit your `data/` folder or `.env` files to version control.
+
+---
+
+## �📄 License
 
 MIT License - Feel free to use and modify for your personal projects.
 

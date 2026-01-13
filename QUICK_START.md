@@ -1,17 +1,16 @@
-# ⚡ Quick Start Guide - Weekly Goal Tracker
+# ⚡ Quick Start Guide - Goal Tracker
 
-## 🎉 Your Application is Running!
+## 🚀 Get Started
 
 ### Access Points
 
 **Development Server:**
-- URL: http://localhost:3001
-- Status: ✅ Running
+- URL: http://localhost:3000 (default Next.js port)
+- Command: `npm run dev`
 
 **Docker Production:**
-- URL: http://localhost:3501
-- Status: ✅ Running
-- Container: `goal-tracker`
+- URL: http://localhost:3000
+- Command: `docker-compose up -d`
 
 ---
 
@@ -19,8 +18,7 @@
 
 ### 1. **Open the Application**
 
-**Development:** http://localhost:3001
-**Production (Docker):** http://localhost:3501
+Navigate to http://localhost:3000 in your browser
 
 ### 2. **Explore the Features**
 
@@ -47,12 +45,6 @@ The app comes with:
 ```bash
 # Start dev server
 npm run dev
-
-# On specific port
-npm run dev -- -p 3001
-
-# Initialize/reset database
-npm run initialize
 
 # Build for production
 npm run build
@@ -119,7 +111,7 @@ If you get `EADDRINUSE` error:
 
 ```bash
 # Find process using the port
-netstat -ano | findstr :3501
+netstat -ano | findstr :3000
 
 # Or use a different port
 npm run dev -- -p 3002
@@ -205,7 +197,7 @@ npm run initialize
 
 ## 🐛 Known Issues
 
-- ⚠️ Port 3500 was in use (using 3501 for Docker instead)
+- ⚠️ Using standard Next.js port 3000 for both dev and production
 - ⚠️ Some lockfile warnings during build (non-critical)
 - ✅ All features working correctly
 
@@ -238,8 +230,8 @@ Your **Weekly Goal Tracker** includes:
 
 ## 🚀 You're All Set!
 
-**Development:** Open http://localhost:3001
-**Production:** Open http://localhost:3501
+**Development:** Open http://localhost:3000
+**Production:** Open http://localhost:3000
 
 Start tracking your goals and building better habits! 🎯
 

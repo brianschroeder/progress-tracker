@@ -2,7 +2,7 @@
 
 ## ✅ Project Successfully Built and Running!
 
-Your **Weekly Goal Tracker** application is now fully functional and running on **http://localhost:3001**
+Your **Goal Tracker** application is now fully functional and running on **http://localhost:3000**
 
 ## 🚀 What Has Been Built
 
@@ -65,7 +65,7 @@ The database has been initialized with:
 
 ### Access the Application
 
-**URL**: http://localhost:3001
+**URL**: http://localhost:3000
 
 ### Quick Start Flow:
 
@@ -90,7 +90,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-**Note**: Docker deployment runs on port **3501** (configured in docker-compose.yml)
+**Note**: Docker deployment runs on port **3000** (configured in docker-compose.yml)
 
 ## 📁 Project Structure
 
@@ -120,8 +120,8 @@ progress-tracker/
 
 ```bash
 # Development
-npm run dev              # Start dev server (port 3001 currently)
-npm run dev -- -p 3501   # Start on specific port
+npm run dev              # Start dev server (port 3000 by default)
+npm run dev -- -p 3000   # Start on specific port
 
 # Database
 npm run initialize       # Reset and initialize database
@@ -190,22 +190,22 @@ Use the Settings page to export all data as JSON
 
 ## ⚠️ Known Issues
 
-- Port 3501 is currently in use on your system
-- Development server is running on port **3001** instead
-- If you need port 3501, stop the other service first
+- Port 3000 is currently in use on your system
+- Development server is running on port **3000** (Next.js default)
+- If you need port 3000, stop the other service first
 
 ## 🔍 Troubleshooting
 
 ### Port Already in Use
 ```bash
 # Find what's using the port
-netstat -ano | findstr :3501
+netstat -ano | findstr :3000
 
 # Kill the process (replace PID)
 taskkill /PID <process_id> /F
 
 # Or use a different port
-npm run dev -- -p 3001
+npm run dev -- -p 3000
 ```
 
 ### Database Issues

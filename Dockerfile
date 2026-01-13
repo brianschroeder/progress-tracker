@@ -27,7 +27,7 @@ FROM node:18-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=3501
+ENV PORT=3000
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y sqlite3 libsqlite3-dev \
@@ -48,6 +48,6 @@ RUN mkdir -p data && chown -R nextjs:nodejs data
 
 USER nextjs
 
-EXPOSE 3501
+EXPOSE 3000
 
 CMD ["node", "server.js"]

@@ -1087,6 +1087,137 @@ export function reorderWorkTodos(workTodoIds: number[]): boolean {
   return true;
 }
 
+// ==================== JIRA INTEGRATION ====================
+
+export function updateWorkGoalJiraInfo(id: number, jiraIssueKey: string, jiraUrl: string): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_goals
+    SET jiraIssueKey = ?,
+        jiraUrl = ?,
+        lastSyncedAt = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(jiraIssueKey, jiraUrl, id);
+  
+  return result.changes > 0;
+}
+
+export function updateWorkTodoJiraInfo(id: number, jiraIssueKey: string, jiraUrl: string): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_todos
+    SET jiraIssueKey = ?,
+        jiraUrl = ?,
+        lastSyncedAt = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(jiraIssueKey, jiraUrl, id);
+  
+  return result.changes > 0;
+}
+
+export function clearWorkGoalJiraInfo(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_goals
+    SET jiraIssueKey = NULL,
+        jiraUrl = NULL,
+        lastSyncedAt = NULL
+    WHERE id = ?
+  `).run(id);
+  
+  return result.changes > 0;
+}
+
+export function clearWorkTodoJiraInfo(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE work_todos
+    SET jiraIssueKey = NULL,
+        jiraUrl = NULL,
+        lastSyncedAt = NULL
+    WHERE id = ?
+  `).run(id);
+  
+  return result.changes > 0;
+}
+
+export function getJiraSettings() {
+  const database = getDB();
+  const settings = database.prepare('SELECT * FROM user_settings WHERE id = 1').get() as any;
+  
+  if (!settings) {
+    return null;
+  }
+  
+  return {
+    jiraEnabled: settings.jiraEnabled === 1,
+    jiraDomain: settings.jiraDomain || '',
+    jiraEmail: settings.jiraEmail || '',
+    jiraApiToken: settings.jiraApiToken || '',
+    jiraProjectKey: settings.jiraProjectKey || '',
+    jiraComponent: settings.jiraComponent || '',
+  };
+}
+
+export function updateJiraSettings(settings: {
+  jiraEnabled: boolean;
+  jiraDomain?: string;
+  jiraEmail?: string;
+  jiraApiToken?: string;
+  jiraProjectKey?: string;
+  jiraComponent?: string;
+}): boolean {
+  const database = getDB();
+  
+  // Ensure settings row exists
+  const existing = database.prepare('SELECT id FROM user_settings WHERE id = 1').get();
+  if (!existing) {
+    database.prepare('INSERT INTO user_settings (id) VALUES (1)').run();
+  }
+  
+  const updates: string[] = [];
+  const values: any = {};
+  
+  updates.push('jiraEnabled = @jiraEnabled');
+  values.jiraEnabled = settings.jiraEnabled ? 1 : 0;
+  
+  if (settings.jiraDomain !== undefined) {
+    updates.push('jiraDomain = @jiraDomain');
+    values.jiraDomain = settings.jiraDomain;
+  }
+  
+  if (settings.jiraEmail !== undefined) {
+    updates.push('jiraEmail = @jiraEmail');
+    values.jiraEmail = settings.jiraEmail;
+  }
+  
+  if (settings.jiraApiToken !== undefined) {
+    updates.push('jiraApiToken = @jiraApiToken');
+    values.jiraApiToken = settings.jiraApiToken;
+  }
+  
+  if (settings.jiraProjectKey !== undefined) {
+    updates.push('jiraProjectKey = @jiraProjectKey');
+    values.jiraProjectKey = settings.jiraProjectKey;
+  }
+  
+  if (settings.jiraComponent !== undefined) {
+    updates.push('jiraComponent = @jiraComponent');
+    values.jiraComponent = settings.jiraComponent;
+  }
+  
+  const result = database.prepare(`
+    UPDATE user_settings
+    SET ${updates.join(', ')},
+        updatedAt = CURRENT_TIMESTAMP
+    WHERE id = 1
+  `).run(values);
+  
+  return result.changes > 0;
+}
+
+// ==================== SHOPPING LIST ====================
+
 export function deleteShoppingItem(id: number): boolean {
   const database = getDB();
   const result = database.prepare('DELETE FROM shopping_list WHERE id = ?').run(id);
@@ -1109,6 +1240,82 @@ export function reorderShoppingItems(itemIds: number[]): boolean {
 export function clearCheckedShoppingItems(): boolean {
   const database = getDB();
   const result = database.prepare('DELETE FROM shopping_list WHERE isChecked = 1').run();
+  return result.changes > 0;
+}
+
+// ==================== COMMENTS ====================
+
+export interface Comment {
+  id: number;
+  workGoalId?: number;
+  workTodoId?: number;
+  text: string;
+  jiraCommentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function getCommentById(id: number): Comment | null {
+  const database = getDB();
+  return database.prepare('SELECT * FROM comments WHERE id = ?').get(id) as Comment | null;
+}
+
+export function getCommentsForGoal(goalId: number): Comment[] {
+  const database = getDB();
+  return database.prepare('SELECT * FROM comments WHERE workGoalId = ? ORDER BY createdAt ASC').all(goalId) as Comment[];
+}
+
+export function getCommentsForTodo(todoId: number): Comment[] {
+  const database = getDB();
+  return database.prepare('SELECT * FROM comments WHERE workTodoId = ? ORDER BY createdAt ASC').all(todoId) as Comment[];
+}
+
+export function addComment(data: {
+  workGoalId?: number;
+  workTodoId?: number;
+  text: string;
+  jiraCommentId?: string;
+}): Comment {
+  const database = getDB();
+  
+  const result = database.prepare(`
+    INSERT INTO comments (workGoalId, workTodoId, text, jiraCommentId)
+    VALUES (@workGoalId, @workTodoId, @text, @jiraCommentId)
+  `).run({
+    workGoalId: data.workGoalId || null,
+    workTodoId: data.workTodoId || null,
+    text: data.text,
+    jiraCommentId: data.jiraCommentId || null,
+  });
+
+  return database.prepare('SELECT * FROM comments WHERE id = ?').get(result.lastInsertRowid) as Comment;
+}
+
+export function updateComment(id: number, text: string): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE comments 
+    SET text = ?, updatedAt = CURRENT_TIMESTAMP 
+    WHERE id = ?
+  `).run(text, id);
+  
+  return result.changes > 0;
+}
+
+export function deleteComment(id: number): boolean {
+  const database = getDB();
+  const result = database.prepare('DELETE FROM comments WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function updateCommentJiraInfo(id: number, jiraCommentId: string): boolean {
+  const database = getDB();
+  const result = database.prepare(`
+    UPDATE comments 
+    SET jiraCommentId = ?, updatedAt = CURRENT_TIMESTAMP 
+    WHERE id = ?
+  `).run(jiraCommentId, id);
+  
   return result.changes > 0;
 }
 
