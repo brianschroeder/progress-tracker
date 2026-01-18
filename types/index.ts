@@ -76,6 +76,14 @@ export interface YearGoal {
   targetCount?: number; // Target count (e.g., 175 workouts)
 }
 
+export interface YearGoalEntry {
+  id?: number;
+  yearGoalId: number;
+  entryDate: string; // YYYY-MM-DD
+  delta: number; // +1 for increment, -1 for decrement
+  createdAt?: string;
+}
+
 export interface DecadeGoal {
   id?: number;
   title: string;

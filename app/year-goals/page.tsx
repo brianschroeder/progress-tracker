@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlusIcon, TrashIcon, PencilIcon, CheckCircleIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
+import { format } from 'date-fns';
+import { PlusIcon, TrashIcon, PencilIcon, CheckCircleIcon, ChevronUpIcon, ChevronDownIcon, ClockIcon } from '@heroicons/react/24/solid';
 
 interface YearGoal {
   id?: number;
@@ -16,6 +17,14 @@ interface YearGoal {
   trackingMode?: 'percentage' | 'count';
   currentCount?: number;
   targetCount?: number;
+}
+
+interface YearGoalEntry {
+  id?: number;
+  yearGoalId: number;
+  entryDate: string;
+  delta: number;
+  createdAt?: string;
 }
 
 const categories = [
@@ -34,6 +43,9 @@ export default function YearGoalsPage() {
   const [loading, setLoading] = useState(true);
   const [expandedGoals, setExpandedGoals] = useState<Set<number>>(new Set());
   const [editMode, setEditMode] = useState(false);
+  const [historyGoal, setHistoryGoal] = useState<YearGoal | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<YearGoalEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -72,6 +84,42 @@ export default function YearGoalsPage() {
       setLoading(false);
     }
   }
+
+  const openHistory = async (goal: YearGoal) => {
+    if (!goal.id) return;
+    setHistoryGoal(goal);
+    setHistoryEntries([]);
+    setHistoryLoading(true);
+
+    try {
+      const response = await fetch(`/api/year-goal-entries?goalId=${goal.id}`);
+      const data = await response.json();
+      setHistoryEntries(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const closeHistory = () => {
+    setHistoryGoal(null);
+    setHistoryEntries([]);
+    setHistoryLoading(false);
+  };
+
+  const recordCountEntry = async (goalId: number, delta: number) => {
+    try {
+      const entryDate = format(new Date(), 'yyyy-MM-dd');
+      await fetch('/api/year-goal-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yearGoalId: goalId, entryDate, delta }),
+      });
+    } catch (error) {
+      console.error('Failed to record count entry:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,7 +229,7 @@ export default function YearGoalsPage() {
         ? Math.round((newCount / goal.targetCount) * 100)
         : 0;
 
-      await fetch(`/api/year-goals/${id}`, {
+      const response = await fetch(`/api/year-goals/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -192,6 +240,11 @@ export default function YearGoalsPage() {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to update count');
+      }
+
+      await recordCountEntry(id, increment ? 1 : -1);
       fetchGoals();
     } catch (error) {
       console.error('Failed to update count:', error);
@@ -286,6 +339,16 @@ export default function YearGoalsPage() {
   const completedGoals = goals.filter(g => g.isCompleted).length;
   const totalGoals = goals.length;
   const completionRate = totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0;
+  const groupedHistoryEntries = historyEntries.reduce((acc, entry) => {
+    const existing = acc.get(entry.entryDate);
+    if (existing) {
+      existing.delta += entry.delta;
+    } else {
+      acc.set(entry.entryDate, { ...entry });
+    }
+    return acc;
+  }, new Map<string, YearGoalEntry>());
+  const groupedHistoryList = Array.from(groupedHistoryEntries.values());
 
   // Calculate days remaining in the year
   const today = new Date();
@@ -558,6 +621,16 @@ export default function YearGoalsPage() {
                                   className="w-10 h-10 rounded-lg bg-accent hover:bg-accent-light flex items-center justify-center text-white font-bold text-lg transition-smooth"
                                 >
                                   +
+                                </button>
+                              </div>
+
+                              <div className="flex items-center justify-end mb-3">
+                                <button
+                                  onClick={() => openHistory(goal)}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-dark transition-smooth"
+                                >
+                                  <ClockIcon className="w-4 h-4" />
+                                  History
                                 </button>
                               </div>
                               
@@ -902,6 +975,52 @@ export default function YearGoalsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {historyGoal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+              <div className="p-6 border-b border-neutral-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold text-neutral-900">History</h2>
+                  <p className="text-sm text-neutral-500">{historyGoal.title}</p>
+                </div>
+                <button
+                  onClick={closeHistory}
+                  className="px-3 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-smooth"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-6">
+                {historyLoading ? (
+                  <div className="text-center text-neutral-400 py-8">Loading...</div>
+                ) : historyEntries.length === 0 ? (
+                  <div className="text-center text-neutral-500 py-10">
+                    No history yet. Use the + button to log progress.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {groupedHistoryList.map((entry) => {
+                      const label = format(new Date(`${entry.entryDate}T00:00:00`), 'MMM d, yyyy');
+                      const isIncrement = entry.delta >= 0;
+                      return (
+                        <div
+                          key={entry.id ?? `${entry.entryDate}-${entry.createdAt ?? ''}`}
+                          className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3"
+                        >
+                          <span className="text-sm font-medium text-neutral-800">{label}</span>
+                          <span className={`text-sm font-semibold ${isIncrement ? 'text-success' : 'text-danger'}`}>
+                            {isIncrement ? '+' : ''}{entry.delta}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

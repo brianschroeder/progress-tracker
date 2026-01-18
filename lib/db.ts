@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { Goal, Completion, Category, UserSettings, WeeklyProgress, StreakInfo } from '@/types';
+import { Goal, Completion, Category, UserSettings, WeeklyProgress, StreakInfo, YearGoalEntry } from '@/types';
 import { formatDateForDB, getCurrentWeek } from './date-utils';
 
 // Database path
@@ -99,6 +99,18 @@ function initializeDatabase() {
     )
   `);
 
+  // Create year_goal_entries table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS year_goal_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      yearGoalId INTEGER NOT NULL,
+      entryDate TEXT NOT NULL,
+      delta INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (yearGoalId) REFERENCES year_goals(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create todos table
   database.exec(`
     CREATE TABLE IF NOT EXISTS todos (
@@ -174,6 +186,8 @@ function initializeDatabase() {
   database.exec(`CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(completionDate)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_completions_goalId ON completions(goalId)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_goals_active ON goals(isActive)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_year_goal_entries_goalId ON year_goal_entries(yearGoalId)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_year_goal_entries_date ON year_goal_entries(entryDate)`);
 
   // Insert default settings if none exist
   const settingsCount = database.prepare('SELECT COUNT(*) as count FROM user_settings').get() as { count: number };
@@ -714,6 +728,34 @@ export function reorderYearGoals(goalIds: number[]): boolean {
   })();
 
   return true;
+}
+
+// ============================================
+// YEAR GOAL ENTRIES
+// ============================================
+
+export function getYearGoalEntries(yearGoalId: number): YearGoalEntry[] {
+  const database = getDB();
+  return database.prepare(`
+    SELECT *
+    FROM year_goal_entries
+    WHERE yearGoalId = ?
+    ORDER BY entryDate DESC, id DESC
+  `).all(yearGoalId) as YearGoalEntry[];
+}
+
+export function createYearGoalEntry(entry: Omit<YearGoalEntry, 'id' | 'createdAt'>): number {
+  const database = getDB();
+  const result = database.prepare(`
+    INSERT INTO year_goal_entries (yearGoalId, entryDate, delta)
+    VALUES (@yearGoalId, @entryDate, @delta)
+  `).run({
+    yearGoalId: entry.yearGoalId,
+    entryDate: entry.entryDate,
+    delta: entry.delta,
+  });
+
+  return result.lastInsertRowid as number;
 }
 
 // ============================================
