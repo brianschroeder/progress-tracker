@@ -18,11 +18,23 @@ function getDB(): Database.Database {
   return db;
 }
 
+function getTableColumns(table: string): string[] {
+  const database = getDB();
+  return (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((col) => col.name);
+}
+
 /**
  * Initialize database schema
  */
 function initializeDatabase() {
   const database = getDB();
+  const ensureColumn = (table: string, column: string, type: string, defaultValue?: string) => {
+    const columns = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((col) => col.name === column)) {
+      const defaultClause = defaultValue ? ` DEFAULT ${defaultValue}` : '';
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}${defaultClause}`);
+    }
+  };
 
   // Create goals table
   database.exec(`
@@ -79,6 +91,12 @@ function initializeDatabase() {
       updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  ensureColumn('user_settings', 'jiraEnabled', 'BOOLEAN', '0');
+  ensureColumn('user_settings', 'jiraDomain', 'TEXT');
+  ensureColumn('user_settings', 'jiraEmail', 'TEXT');
+  ensureColumn('user_settings', 'jiraApiToken', 'TEXT');
+  ensureColumn('user_settings', 'jiraProjectKey', 'TEXT');
+  ensureColumn('user_settings', 'jiraComponent', 'TEXT');
 
   // Create year_goals table
   database.exec(`
@@ -161,6 +179,10 @@ function initializeDatabase() {
       description TEXT,
       targetDate TEXT,
       isCompleted BOOLEAN NOT NULL DEFAULT 0,
+      inProgress BOOLEAN NOT NULL DEFAULT 0,
+      jiraIssueKey TEXT,
+      jiraUrl TEXT,
+      lastSyncedAt TEXT,
       priority TEXT NOT NULL DEFAULT 'medium',
       color TEXT DEFAULT '#3B82F6',
       sortOrder INTEGER DEFAULT 0,
@@ -176,11 +198,41 @@ function initializeDatabase() {
       title TEXT NOT NULL,
       description TEXT,
       isCompleted BOOLEAN NOT NULL DEFAULT 0,
+      inProgress BOOLEAN NOT NULL DEFAULT 0,
+      jiraIssueKey TEXT,
+      jiraUrl TEXT,
+      lastSyncedAt TEXT,
       sortOrder INTEGER DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (workGoalId) REFERENCES work_goals(id) ON DELETE CASCADE
     )
   `);
+
+  ensureColumn('work_goals', 'inProgress', 'BOOLEAN', '0');
+  ensureColumn('work_todos', 'inProgress', 'BOOLEAN', '0');
+  ensureColumn('work_goals', 'jiraIssueKey', 'TEXT');
+  ensureColumn('work_goals', 'jiraUrl', 'TEXT');
+  ensureColumn('work_goals', 'lastSyncedAt', 'TEXT');
+  ensureColumn('work_todos', 'jiraIssueKey', 'TEXT');
+  ensureColumn('work_todos', 'jiraUrl', 'TEXT');
+  ensureColumn('work_todos', 'lastSyncedAt', 'TEXT');
+
+  // Create comments table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workGoalId INTEGER,
+      workTodoId INTEGER,
+      text TEXT NOT NULL,
+      jiraCommentId TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workGoalId) REFERENCES work_goals(id) ON DELETE CASCADE,
+      FOREIGN KEY (workTodoId) REFERENCES work_todos(id) ON DELETE CASCADE
+    )
+  `);
+  ensureColumn('comments', 'jiraCommentId', 'TEXT');
+  ensureColumn('comments', 'updatedAt', 'TEXT');
 
   // Create indexes for better performance
   database.exec(`CREATE INDEX IF NOT EXISTS idx_completions_date ON completions(completionDate)`);
@@ -984,24 +1036,36 @@ export function updateShoppingItem(item: any): boolean {
 
 export function getAllWorkGoals() {
   const database = getDB();
-  return database.prepare('SELECT * FROM work_goals ORDER BY sortOrder ASC, createdAt DESC').all();
+  const goals = database.prepare('SELECT * FROM work_goals ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
+  return goals.map((goal) => ({
+    ...goal,
+    isCompleted: Boolean(goal.isCompleted),
+    inProgress: Boolean(goal.inProgress),
+  }));
 }
 
 export function getWorkGoalById(id: number) {
   const database = getDB();
-  return database.prepare('SELECT * FROM work_goals WHERE id = ?').get(id);
+  const goal = database.prepare('SELECT * FROM work_goals WHERE id = ?').get(id) as any;
+  if (!goal) return null;
+  return {
+    ...goal,
+    isCompleted: Boolean(goal.isCompleted),
+    inProgress: Boolean(goal.inProgress),
+  };
 }
 
 export function createWorkGoal(workGoal: any): number {
   const database = getDB();
   const result = database.prepare(`
-    INSERT INTO work_goals (title, description, targetDate, isCompleted, priority, color, sortOrder)
-    VALUES (@title, @description, @targetDate, @isCompleted, @priority, @color, @sortOrder)
+    INSERT INTO work_goals (title, description, targetDate, isCompleted, inProgress, priority, color, sortOrder)
+    VALUES (@title, @description, @targetDate, @isCompleted, @inProgress, @priority, @color, @sortOrder)
   `).run({
     title: workGoal.title,
     description: workGoal.description || null,
     targetDate: workGoal.targetDate || null,
     isCompleted: workGoal.isCompleted ? 1 : 0,
+    inProgress: workGoal.inProgress ? 1 : 0,
     priority: workGoal.priority || 'medium',
     color: workGoal.color || '#3B82F6',
     sortOrder: workGoal.sortOrder || 0,
@@ -1018,6 +1082,7 @@ export function updateWorkGoal(workGoal: any): boolean {
         description = @description,
         targetDate = @targetDate,
         isCompleted = @isCompleted,
+        inProgress = @inProgress,
         priority = @priority,
         color = @color,
         sortOrder = @sortOrder
@@ -1028,6 +1093,7 @@ export function updateWorkGoal(workGoal: any): boolean {
     description: workGoal.description || null,
     targetDate: workGoal.targetDate || null,
     isCompleted: workGoal.isCompleted ? 1 : 0,
+    inProgress: workGoal.inProgress ? 1 : 0,
     priority: workGoal.priority || 'medium',
     color: workGoal.color || '#3B82F6',
     sortOrder: workGoal.sortOrder || 0,
@@ -1059,29 +1125,46 @@ export function reorderWorkGoals(workGoalIds: number[]): boolean {
 
 export function getAllWorkTodos() {
   const database = getDB();
-  return database.prepare('SELECT * FROM work_todos ORDER BY sortOrder ASC, createdAt DESC').all();
+  const todos = database.prepare('SELECT * FROM work_todos ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
+  return todos.map((todo) => ({
+    ...todo,
+    isCompleted: Boolean(todo.isCompleted),
+    inProgress: Boolean(todo.inProgress),
+  }));
 }
 
 export function getWorkTodosByGoalId(workGoalId: number) {
   const database = getDB();
-  return database.prepare('SELECT * FROM work_todos WHERE workGoalId = ? ORDER BY sortOrder ASC, createdAt DESC').all(workGoalId);
+  const todos = database.prepare('SELECT * FROM work_todos WHERE workGoalId = ? ORDER BY sortOrder ASC, createdAt DESC').all(workGoalId) as any[];
+  return todos.map((todo) => ({
+    ...todo,
+    isCompleted: Boolean(todo.isCompleted),
+    inProgress: Boolean(todo.inProgress),
+  }));
 }
 
 export function getWorkTodoById(id: number) {
   const database = getDB();
-  return database.prepare('SELECT * FROM work_todos WHERE id = ?').get(id);
+  const todo = database.prepare('SELECT * FROM work_todos WHERE id = ?').get(id) as any;
+  if (!todo) return null;
+  return {
+    ...todo,
+    isCompleted: Boolean(todo.isCompleted),
+    inProgress: Boolean(todo.inProgress),
+  };
 }
 
 export function createWorkTodo(workTodo: any): number {
   const database = getDB();
   const result = database.prepare(`
-    INSERT INTO work_todos (workGoalId, title, description, isCompleted, sortOrder)
-    VALUES (@workGoalId, @title, @description, @isCompleted, @sortOrder)
+    INSERT INTO work_todos (workGoalId, title, description, isCompleted, inProgress, sortOrder)
+    VALUES (@workGoalId, @title, @description, @isCompleted, @inProgress, @sortOrder)
   `).run({
     workGoalId: workTodo.workGoalId,
     title: workTodo.title,
     description: workTodo.description || null,
     isCompleted: workTodo.isCompleted ? 1 : 0,
+    inProgress: workTodo.inProgress ? 1 : 0,
     sortOrder: workTodo.sortOrder || 0,
   });
 
@@ -1096,6 +1179,7 @@ export function updateWorkTodo(workTodo: any): boolean {
         title = @title,
         description = @description,
         isCompleted = @isCompleted,
+        inProgress = @inProgress,
         sortOrder = @sortOrder
     WHERE id = @id
   `).run({
@@ -1104,6 +1188,7 @@ export function updateWorkTodo(workTodo: any): boolean {
     title: workTodo.title,
     description: workTodo.description || null,
     isCompleted: workTodo.isCompleted ? 1 : 0,
+    inProgress: workTodo.inProgress ? 1 : 0,
     sortOrder: workTodo.sortOrder || 0,
   });
 
@@ -1181,6 +1266,30 @@ export function clearWorkTodoJiraInfo(id: number): boolean {
   `).run(id);
   
   return result.changes > 0;
+}
+
+export function clearAllJiraLinks(): { workGoals: number; workTodos: number; comments: number } {
+  const database = getDB();
+  const workGoalColumns = new Set(getTableColumns('work_goals'));
+  const workTodoColumns = new Set(getTableColumns('work_todos'));
+  const commentColumns = new Set(getTableColumns('comments'));
+
+  const clearTable = (table: string, columns: Set<string>) => {
+    const updates: string[] = [];
+    if (columns.has('jiraIssueKey')) updates.push('jiraIssueKey = NULL');
+    if (columns.has('jiraUrl')) updates.push('jiraUrl = NULL');
+    if (columns.has('lastSyncedAt')) updates.push('lastSyncedAt = NULL');
+    if (columns.has('jiraCommentId')) updates.push('jiraCommentId = NULL');
+    if (updates.length === 0) return 0;
+    const result = database.prepare(`UPDATE ${table} SET ${updates.join(', ')}`).run();
+    return result.changes;
+  };
+
+  return {
+    workGoals: clearTable('work_goals', workGoalColumns),
+    workTodos: clearTable('work_todos', workTodoColumns),
+    comments: clearTable('comments', commentColumns),
+  };
 }
 
 export function getJiraSettings() {

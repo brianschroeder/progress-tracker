@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
@@ -84,6 +85,35 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: `Connection test failed: ${error.message}` });
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function clearLocalJiraLinks() {
+    const confirmation = prompt('Type CLEAR to remove all local JIRA links from the database.');
+    if (confirmation !== 'CLEAR') return;
+
+    setClearing(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/jira/clear-local', {
+        method: 'POST',
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to clear local JIRA links');
+      }
+
+      const { workGoals, workTodos, comments } = result.cleared || {};
+      setMessage({
+        type: 'success',
+        text: `Cleared local JIRA links. Work goals: ${workGoals || 0}, work tasks: ${workTodos || 0}, comments: ${comments || 0}.`,
+      });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to clear local JIRA links.' });
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -278,6 +308,23 @@ export default function SettingsPage() {
               className="border-purple-600 text-purple-600 hover:bg-purple-50"
             >
               Open JIRA Test Console
+            </Button>
+          </div>
+
+          {/* JIRA Reset */}
+          <div className="mt-6 p-4 bg-red-50 rounded-lg border border-red-200">
+            <h3 className="font-medium text-red-900 mb-2">Danger Zone</h3>
+            <p className="text-sm text-red-800 mb-3">
+              Clear all locally stored JIRA links so you can start fresh. This does not modify JIRA issues.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={clearLocalJiraLinks}
+              disabled={clearing}
+              className="border-red-600 text-red-600 hover:bg-red-50"
+            >
+              {clearing ? 'Clearing...' : 'Clear Local JIRA Links'}
             </Button>
           </div>
         </div>

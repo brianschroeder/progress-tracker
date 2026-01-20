@@ -469,11 +469,55 @@ export class JiraClient {
   }
 
   /**
+   * Search for issues by JQL
+   */
+  async searchIssuesByJql(jql: string, maxResults: number = 50): Promise<JiraIssue[]> {
+    const result = await this.request<{ issues: JiraIssue[] }>(
+      `/search/jql`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          jql,
+          maxResults,
+          fields: ['summary', 'description', 'status', 'issuetype', 'duedate', 'subtasks'],
+        }),
+      }
+    );
+
+    return result.issues || [];
+  }
+
+  /**
+   * Move an issue into an "in progress" style status
+   */
+  async moveToInProgress(issueKey: string): Promise<void> {
+    const transitions = await this.getTransitions(issueKey);
+    const candidates = ['in progress', 'progress', 'doing', 'active', 'start'];
+    const transition = transitions.find(t =>
+      candidates.some((name) => t.name.toLowerCase().includes(name))
+    );
+
+    if (!transition) {
+      console.warn(`Could not find in-progress transition for issue ${issueKey}`);
+      return;
+    }
+
+    await this.request(`/issue/${issueKey}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        transition: {
+          id: transition.id,
+        },
+      }),
+    });
+  }
+
+  /**
    * Close/Complete an issue
    */
   async closeIssue(issueKey: string): Promise<void> {
     // Try common transition names for completion
-    const completionTransitions = ['done', 'close', 'complete', 'resolve'];
+    const completionTransitions = ['done', 'close', 'closed', 'complete', 'completed', 'resolve', 'resolved', 'finish', 'finished'];
     
     for (const transitionName of completionTransitions) {
       try {
@@ -506,6 +550,31 @@ export class JiraClient {
   }
 
   /**
+   * Close/Complete an issue as duplicate when possible
+   */
+  async closeIssueAsDuplicate(issueKey: string): Promise<boolean> {
+    const transitions = await this.getTransitions(issueKey);
+    const transition = transitions.find(t =>
+      t.name.toLowerCase().includes('duplicate')
+    );
+
+    if (!transition) {
+      return false;
+    }
+
+    await this.request(`/issue/${issueKey}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        transition: {
+          id: transition.id,
+        },
+      }),
+    });
+
+    return true;
+  }
+
+  /**
    * Get available issue types for the project
    */
   async getProjectIssueTypes(): Promise<Array<{ id: string; name: string; subtask: boolean }>> {
@@ -518,6 +587,20 @@ export class JiraClient {
       console.error('Error getting project issue types:', error);
       return [];
     }
+  }
+
+  /**
+   * Unassign an issue
+   */
+  async unassignIssue(issueKey: string): Promise<void> {
+    await this.request(`/issue/${issueKey}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        fields: {
+          assignee: null,
+        },
+      }),
+    });
   }
 
   /**

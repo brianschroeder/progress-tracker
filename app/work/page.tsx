@@ -7,6 +7,8 @@ import {
   PencilIcon, 
   TrashIcon, 
   CheckCircleIcon, 
+  PlayIcon,
+  PauseIcon,
   ChevronDownIcon,
   ChevronUpIcon 
 } from '@heroicons/react/24/solid';
@@ -136,6 +138,7 @@ export default function WorkPage() {
           body: JSON.stringify({
             ...goalFormData,
             isCompleted: editingGoal.isCompleted,
+            inProgress: editingGoal.inProgress ?? false,
             sortOrder: editingGoal.sortOrder,
           }),
         });
@@ -148,6 +151,7 @@ export default function WorkPage() {
           body: JSON.stringify({
             ...goalFormData,
             isCompleted: false,
+            inProgress: false,
             sortOrder: workGoals.length,
           }),
         });
@@ -170,12 +174,33 @@ export default function WorkPage() {
         body: JSON.stringify({
           ...goal,
           isCompleted: !goal.isCompleted,
+          inProgress: false,
         }),
       });
       const updated = await response.json();
       setWorkGoals(workGoals.map((g) => (g.id === updated.id ? updated : g)));
     } catch (error) {
       console.error('Failed to toggle goal completion:', error);
+    }
+  }
+
+  async function toggleGoalInProgress(goal: WorkGoal) {
+    if (!goal.id) return;
+    const nextInProgress = !goal.inProgress;
+    try {
+      const response = await fetch(`/api/work-goals/${goal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...goal,
+          inProgress: nextInProgress,
+          isCompleted: nextInProgress ? false : goal.isCompleted,
+        }),
+      });
+      const updated = await response.json();
+      setWorkGoals(workGoals.map((g) => (g.id === updated.id ? updated : g)));
+    } catch (error) {
+      console.error('Failed to toggle goal in progress:', error);
     }
   }
 
@@ -226,6 +251,7 @@ export default function WorkPage() {
             ...todoFormData,
             workGoalId: selectedGoalId,
             isCompleted: editingTodo.isCompleted,
+            inProgress: editingTodo.inProgress ?? false,
             sortOrder: editingTodo.sortOrder,
           }),
         });
@@ -245,6 +271,7 @@ export default function WorkPage() {
             ...todoFormData,
             workGoalId: selectedGoalId,
             isCompleted: false,
+            inProgress: false,
             sortOrder: goalTodos.length,
           }),
         });
@@ -269,6 +296,7 @@ export default function WorkPage() {
         body: JSON.stringify({
           ...todo,
           isCompleted: !todo.isCompleted,
+          inProgress: false,
         }),
       });
       const updated = await response.json();
@@ -280,6 +308,31 @@ export default function WorkPage() {
       });
     } catch (error) {
       console.error('Failed to toggle todo completion:', error);
+    }
+  }
+
+  async function toggleTodoInProgress(todo: WorkTodo) {
+    if (!todo.id) return;
+    const nextInProgress = !todo.inProgress;
+    try {
+      const response = await fetch(`/api/work-todos/${todo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...todo,
+          inProgress: nextInProgress,
+          isCompleted: nextInProgress ? false : todo.isCompleted,
+        }),
+      });
+      const updated = await response.json();
+      setWorkTodos({
+        ...workTodos,
+        [todo.workGoalId]: workTodos[todo.workGoalId].map((t) =>
+          t.id === updated.id ? updated : t
+        ),
+      });
+    } catch (error) {
+      console.error('Failed to toggle todo in progress:', error);
     }
   }
 
@@ -417,6 +470,8 @@ export default function WorkPage() {
       opacity: isDragging ? 0.5 : 1,
     };
 
+    const isInProgress = !!todo.inProgress && !todo.isCompleted;
+
     return (
       <div
         ref={setNodeRef}
@@ -443,6 +498,18 @@ export default function WorkPage() {
               }`}
             />
           </button>
+          <button
+            onClick={() => toggleTodoInProgress(todo)}
+            className="mt-0.5"
+            title={isInProgress ? 'Mark not in progress' : 'Mark in progress'}
+            disabled={todo.isCompleted}
+          >
+            {isInProgress ? (
+              <PauseIcon className="w-5 h-5 text-blue-500" />
+            ) : (
+              <PlayIcon className={`w-5 h-5 ${todo.isCompleted ? 'text-gray-200' : 'text-gray-300 hover:text-gray-400'}`} />
+            )}
+          </button>
           <div className="flex-1">
             <p
               className={`text-sm flex items-center gap-2 ${
@@ -452,6 +519,11 @@ export default function WorkPage() {
               }`}
             >
               {todo.title}
+              {isInProgress && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                  In Progress
+                </span>
+              )}
               {(todo as any).jiraIssueKey && (
                 <a
                   href={(todo as any).jiraUrl}
@@ -512,6 +584,7 @@ export default function WorkPage() {
     const isExpanded = expandedGoals.has(goal.id);
     const completedTodos = todos.filter((t) => t.isCompleted).length;
     const totalTodos = todos.length;
+    const isInProgress = !!goal.inProgress && !goal.isCompleted;
 
     return (
       <div
@@ -547,6 +620,18 @@ export default function WorkPage() {
                     }`}
                   />
                 </button>
+                <button
+                  onClick={() => toggleGoalInProgress(goal)}
+                  className="mt-1"
+                  title={isInProgress ? 'Mark not in progress' : 'Mark in progress'}
+                  disabled={goal.isCompleted}
+                >
+                  {isInProgress ? (
+                    <PauseIcon className="w-6 h-6 text-blue-500" />
+                  ) : (
+                    <PlayIcon className={`w-6 h-6 ${goal.isCompleted ? 'text-gray-200' : 'text-gray-300 hover:text-gray-400'}`} />
+                  )}
+                </button>
                 <div className="flex-1">
                   <h3
                     className={`text-lg font-semibold flex items-center gap-2 ${
@@ -554,6 +639,11 @@ export default function WorkPage() {
                     }`}
                   >
                     {goal.title}
+                    {isInProgress && (
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                        In Progress
+                      </span>
+                    )}
                     {(goal as any).jiraIssueKey && (
                       <a
                         href={(goal as any).jiraUrl}
@@ -674,6 +764,17 @@ export default function WorkPage() {
     return date.toISOString().split('T')[0];
   };
 
+  const allTodos = Object.values(workTodos).flat();
+  const goalTitleById = new Map(workGoals.map((goal) => [goal.id, goal.title]));
+  const goalOrderById = new Map(workGoals.map((goal) => [goal.id, goal.sortOrder ?? 0]));
+  const inProgressTodos = allTodos
+    .filter((todo) => todo.inProgress && !todo.isCompleted)
+    .sort((a, b) => {
+      const goalOrderDiff = (goalOrderById.get(a.workGoalId) ?? 0) - (goalOrderById.get(b.workGoalId) ?? 0);
+      if (goalOrderDiff !== 0) return goalOrderDiff;
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    });
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
@@ -712,6 +813,59 @@ export default function WorkPage() {
             </div>
           )}
         </div>
+
+        {inProgressTodos.length > 0 && (
+          <div className="mb-6 bg-white rounded-lg shadow p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">In Progress Tasks</h2>
+              <span className="text-sm text-gray-500">{inProgressTodos.length}</span>
+            </div>
+            <div className="space-y-2">
+              {inProgressTodos.map((todo) => (
+                <div
+                  key={todo.id}
+                  className="flex items-center justify-between gap-4 rounded border border-gray-200 bg-gray-50 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm text-gray-900">
+                      <span className="truncate">{todo.title}</span>
+                      {(todo as any).jiraIssueKey && (
+                        <a
+                          href={(todo as any).jiraUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-700 text-xs no-underline"
+                          title={`View in JIRA: ${(todo as any).jiraIssueKey}`}
+                        >
+                          [{(todo as any).jiraIssueKey}]
+                        </a>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {goalTitleById.get(todo.workGoalId) || 'Goal'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleTodoInProgress(todo)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title="Mark not in progress"
+                    >
+                      <PauseIcon className="w-4 h-4 text-blue-500" />
+                    </button>
+                    <button
+                      onClick={() => toggleTodoComplete(todo)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title="Mark complete"
+                    >
+                      <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Goals List */}
         <div className="space-y-4">

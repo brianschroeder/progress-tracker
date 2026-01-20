@@ -16,7 +16,7 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const { goalId, dryRun = false } = await request.json();
+    const { goalId, dryRun = false, forceCreate = false } = await request.json();
     
     // Get JIRA settings
     const jiraSettings = getJiraSettings();
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       todosUpdated: 0,
       errors: [],
       dryRun,
+      forceCreate,
       actions: dryRun ? [] : undefined,
     };
     
@@ -64,23 +65,55 @@ export async function POST(request: NextRequest) {
     
     const isNotFoundError = (error: unknown): boolean =>
       error instanceof JiraApiError && error.status === 404;
+    const isDoneStatus = (name?: string | null) =>
+      ['done', 'closed', 'complete', 'resolved'].some((token) => (name || '').toLowerCase().includes(token));
+    const applyStatus = async (
+      issueKey: string,
+      isCompleted: boolean,
+      inProgress: boolean | undefined,
+      currentStatus?: string | null
+    ) => {
+      const status = (currentStatus || '').toLowerCase();
+      const isDone = ['done', 'closed', 'complete', 'resolved'].some((name) => status.includes(name));
+      const isActive = ['in progress', 'progress', 'doing', 'active', 'started'].some((name) => status.includes(name));
+
+      if (isCompleted) {
+        if (!isDone) {
+          await jiraClient.closeIssue(issueKey);
+        }
+        return;
+      }
+
+      if (inProgress) {
+        if (!isActive) {
+          await jiraClient.moveToInProgress(issueKey);
+        }
+        return;
+      }
+
+      if (isDone) {
+        await jiraClient.reopenIssue(issueKey);
+      }
+    };
 
     // Load recent issues for fast exact-title matching (best-effort).
     // Sync still does a strict search fallback before creating anything.
-    console.log('Fetching all JIRA issues for duplicate prevention...');
-    const allJiraIssues = await jiraClient.getIssuesInProject(200);
     const jiraIssuesByTitle = new Map<string, any>();
-    
-    for (const issue of allJiraIssues) {
-      if (issue && issue.fields && issue.fields.summary) {
-        // Store by exact title (case-sensitive)
-        jiraIssuesByTitle.set(issue.fields.summary, issue);
-        // Also store by lowercase for fuzzy matching
-        jiraIssuesByTitle.set(issue.fields.summary.toLowerCase(), issue);
+    if (!forceCreate) {
+      console.log('Fetching all JIRA issues for duplicate prevention...');
+      const allJiraIssues = await jiraClient.getIssuesInProject(200);
+      
+      for (const issue of allJiraIssues) {
+        if (issue && issue.fields && issue.fields.summary) {
+          // Store by exact title (case-sensitive)
+          jiraIssuesByTitle.set(issue.fields.summary, issue);
+          // Also store by lowercase for fuzzy matching
+          jiraIssuesByTitle.set(issue.fields.summary.toLowerCase(), issue);
+        }
       }
+      
+      console.log(`Loaded ${allJiraIssues.length} existing JIRA issues into memory`);
     }
-    
-    console.log(`Loaded ${allJiraIssues.length} existing JIRA issues into memory`);
     
     for (const goal of goalsToSync as any[]) {
       if (!goal) continue;
@@ -89,7 +122,7 @@ export async function POST(request: NextRequest) {
         let jiraIssue = null;
         
         // PRIORITY 1: If we have a stored JIRA key in DB, validate it and update
-        if (goal.jiraIssueKey) {
+        if (!forceCreate && goal.jiraIssueKey) {
           try {
             jiraIssue = await jiraClient.getIssue(goal.jiraIssueKey);
             
@@ -111,15 +144,12 @@ export async function POST(request: NextRequest) {
                 priority: goal.priority,
               });
               
-              // Handle completion status
-              if (jiraIssue && jiraIssue.fields && jiraIssue.fields.status) {
-                const isDone = jiraIssue.fields.status.name.toLowerCase().includes('done');
-                if (goal.isCompleted && !isDone) {
-                  await jiraClient.closeIssue(goal.jiraIssueKey);
-                } else if (!goal.isCompleted && isDone) {
-                  await jiraClient.reopenIssue(goal.jiraIssueKey);
-                }
-              }
+              await applyStatus(
+                goal.jiraIssueKey,
+                goal.isCompleted,
+                goal.inProgress,
+                jiraIssue?.fields?.status?.name
+              );
               
               syncResults.goalsUpdated++;
             }
@@ -147,7 +177,7 @@ export async function POST(request: NextRequest) {
         }
         
         // PRIORITY 2: Check our pre-fetched issues map (NO API calls)
-        if (!goal.jiraIssueKey && !jiraIssue) {
+        if (!forceCreate && !goal.jiraIssueKey && !jiraIssue) {
           // Try exact match first
           jiraIssue = jiraIssuesByTitle.get(goal.title);
           
@@ -158,6 +188,10 @@ export async function POST(request: NextRequest) {
           
           // Filter to only Story type
           if (jiraIssue && jiraIssue.fields && jiraIssue.fields.issuetype && jiraIssue.fields.issuetype.name !== 'Story') {
+            jiraIssue = null;
+          }
+
+          if (jiraIssue && !goal.isCompleted && isDoneStatus(jiraIssue.fields?.status?.name)) {
             jiraIssue = null;
           }
           
@@ -181,15 +215,12 @@ export async function POST(request: NextRequest) {
                 priority: goal.priority,
               });
               
-              // Handle completion status
-              if (jiraIssue && jiraIssue.fields && jiraIssue.fields.status) {
-                const isDone = jiraIssue.fields.status.name.toLowerCase().includes('done');
-                if (goal.isCompleted && !isDone) {
-                  await jiraClient.closeIssue(jiraIssue.key);
-                } else if (!goal.isCompleted && isDone) {
-                  await jiraClient.reopenIssue(jiraIssue.key);
-                }
-              }
+              await applyStatus(
+                jiraIssue.key,
+                goal.isCompleted,
+                goal.inProgress,
+                jiraIssue?.fields?.status?.name
+              );
               
               // Store the JIRA key in DB
               updateWorkGoalJiraInfo(
@@ -203,7 +234,9 @@ export async function POST(request: NextRequest) {
           } else {
             // Map didn't find it (or map was incomplete). Do a strict search fallback before creating.
             const searched = await jiraClient.findIssueByTitle(goal.title, 'Story', true);
-            if (searched) {
+            if (searched && !goal.isCompleted && isDoneStatus(searched.fields?.status?.name)) {
+              jiraIssue = null;
+            } else if (searched) {
               jiraIssue = searched;
 
               if (dryRun) {
@@ -223,14 +256,12 @@ export async function POST(request: NextRequest) {
                   priority: goal.priority,
                 });
 
-                const isDone = jiraIssue && jiraIssue.fields && jiraIssue.fields.status 
-                  ? jiraIssue.fields.status.name.toLowerCase().includes('done')
-                  : false;
-                if (goal.isCompleted && !isDone) {
-                  await jiraClient.closeIssue(jiraIssue.key);
-                } else if (!goal.isCompleted && isDone) {
-                  await jiraClient.reopenIssue(jiraIssue.key);
-                }
+                await applyStatus(
+                  jiraIssue.key,
+                  goal.isCompleted,
+                  goal.inProgress,
+                  jiraIssue?.fields?.status?.name
+                );
 
                 updateWorkGoalJiraInfo(
                   goal.id,
@@ -245,47 +276,50 @@ export async function POST(request: NextRequest) {
                   jiraIssuesByTitle.set(jiraIssue.fields.summary.toLowerCase(), jiraIssue);
                 }
               }
-            } else {
-              // No match found anywhere - safe to create
-            if (dryRun) {
-              syncResults.actions.push({
-                type: 'CREATE_GOAL',
-                goalId: goal.id,
-                title: goal.title,
-                issueType: 'Story',
-                reason: 'Not found in JIRA',
-              });
-              syncResults.goalsCreated++;
-            } else {
-              // Create new issue
-              jiraIssue = await jiraClient.createIssue({
-                summary: goal.title,
-                description: goal.description,
-                issueType: 'Story',
-                dueDate: goal.targetDate,
-                priority: goal.priority,
-              });
-              
-              syncResults.goalsCreated++;
-
-              // If the goal is already completed, close it immediately
-              if (goal.isCompleted) {
-                await jiraClient.closeIssue(jiraIssue.key);
-              }
-              
-              // Store the JIRA key in DB
-              updateWorkGoalJiraInfo(
-                goal.id,
-                jiraIssue.key,
-                `https://${jiraSettings.jiraDomain}/browse/${jiraIssue.key}`
-              );
-              
-              // Add to our map for future lookups in this sync session
-              if (jiraIssue && jiraIssue.fields && jiraIssue.fields.summary) {
-                jiraIssuesByTitle.set(jiraIssue.fields.summary, jiraIssue);
-                jiraIssuesByTitle.set(jiraIssue.fields.summary.toLowerCase(), jiraIssue);
-              }
             }
+          }
+        }
+
+        if (!jiraIssue) {
+          if (dryRun) {
+            syncResults.actions.push({
+              type: 'CREATE_GOAL',
+              goalId: goal.id,
+              title: goal.title,
+              issueType: 'Story',
+              reason: forceCreate ? 'Force create enabled' : 'Not found in JIRA',
+            });
+            syncResults.goalsCreated++;
+          } else {
+            // Create new issue
+            jiraIssue = await jiraClient.createIssue({
+              summary: goal.title,
+              description: goal.description,
+              issueType: 'Story',
+              dueDate: goal.targetDate,
+              priority: goal.priority,
+            });
+            
+            syncResults.goalsCreated++;
+
+            await applyStatus(
+              jiraIssue.key,
+              goal.isCompleted,
+              goal.inProgress,
+              jiraIssue?.fields?.status?.name
+            );
+            
+            // Store the JIRA key in DB
+            updateWorkGoalJiraInfo(
+              goal.id,
+              jiraIssue.key,
+              `https://${jiraSettings.jiraDomain}/browse/${jiraIssue.key}`
+            );
+            
+            // Add to our map for future lookups in this sync session
+            if (!forceCreate && jiraIssue && jiraIssue.fields && jiraIssue.fields.summary) {
+              jiraIssuesByTitle.set(jiraIssue.fields.summary, jiraIssue);
+              jiraIssuesByTitle.set(jiraIssue.fields.summary.toLowerCase(), jiraIssue);
             }
           }
         }
@@ -310,7 +344,7 @@ export async function POST(request: NextRequest) {
             let jiraSubtask = null;
             
             // PRIORITY 1: If we have a stored JIRA key in DB, validate it and update
-            if (todo.jiraIssueKey) {
+            if (!forceCreate && todo.jiraIssueKey) {
               try {
                 jiraSubtask = await jiraClient.getIssue(todo.jiraIssueKey);
                 
@@ -331,15 +365,12 @@ export async function POST(request: NextRequest) {
                     description: todo.description,
                   });
                   
-                  // Handle completion status
-                  if (jiraSubtask && jiraSubtask.fields && jiraSubtask.fields.status) {
-                    const isDone = jiraSubtask.fields.status.name.toLowerCase().includes('done');
-                    if (todo.isCompleted && !isDone) {
-                      await jiraClient.closeIssue(todo.jiraIssueKey);
-                    } else if (!todo.isCompleted && isDone) {
-                      await jiraClient.reopenIssue(todo.jiraIssueKey);
-                    }
-                  }
+                  await applyStatus(
+                    todo.jiraIssueKey,
+                    todo.isCompleted,
+                    todo.inProgress,
+                    jiraSubtask?.fields?.status?.name
+                  );
                   
                   syncResults.todosUpdated++;
                 }
@@ -366,11 +397,14 @@ export async function POST(request: NextRequest) {
             }
             
             // PRIORITY 2: Search within parent issue's subtasks
-            if (!todo.jiraIssueKey && !jiraSubtask) {
+            if (!forceCreate && !todo.jiraIssueKey && !jiraSubtask) {
               const existingSubtask = await jiraClient.findSubtaskByTitle(jiraIssue.key, todo.title);
               
-              if (existingSubtask) {
+              if (existingSubtask && !todo.isCompleted && isDoneStatus(existingSubtask.fields?.status?.name)) {
+                // Ignore closed subtasks when the local todo is still active
+              } else if (existingSubtask) {
                 // Found existing subtask
+                jiraSubtask = existingSubtask;
                 if (dryRun) {
                   syncResults.actions.push({
                     type: 'UPDATE_TODO',
@@ -388,15 +422,12 @@ export async function POST(request: NextRequest) {
                     description: todo.description || todo.title,
                   });
                   
-                  // Handle completion status
-                  if (existingSubtask && existingSubtask.fields && existingSubtask.fields.status) {
-                    const isDone = existingSubtask.fields.status.name.toLowerCase().includes('done');
-                    if (todo.isCompleted && !isDone) {
-                      await jiraClient.closeIssue(existingSubtask.key);
-                    } else if (!todo.isCompleted && isDone) {
-                      await jiraClient.reopenIssue(existingSubtask.key);
-                    }
-                  }
+                  await applyStatus(
+                    existingSubtask.key,
+                    todo.isCompleted,
+                    todo.inProgress,
+                    existingSubtask?.fields?.status?.name
+                  );
                   
                   // Store JIRA key in DB
                   updateWorkTodoJiraInfo(
@@ -407,37 +438,42 @@ export async function POST(request: NextRequest) {
                   
                   syncResults.todosUpdated++;
                 }
+              }
+            }
+
+            if (!jiraSubtask) {
+              // No existing subtask found - create new one
+              if (dryRun) {
+                syncResults.actions.push({
+                  type: 'CREATE_TODO',
+                  todoId: todo.id,
+                  title: todo.title,
+                  parentKey: jiraIssue.key,
+                  reason: forceCreate ? 'Force create enabled' : undefined,
+                });
+                syncResults.todosCreated++;
               } else {
-                // No existing subtask found - create new one
-                if (dryRun) {
-                  syncResults.actions.push({
-                    type: 'CREATE_TODO',
-                    todoId: todo.id,
-                    title: todo.title,
-                    parentKey: jiraIssue.key,
-                  });
-                  syncResults.todosCreated++;
-                } else {
-                  jiraSubtask = await jiraClient.createSubtask(
-                    jiraIssue.key,
-                    todo.title,
-                    todo.description || todo.title
-                  );
-                  
-                  // Store JIRA key in DB
-                  updateWorkTodoJiraInfo(
-                    todo.id,
-                    jiraSubtask.key,
-                    `https://${jiraSettings.jiraDomain}/browse/${jiraSubtask.key}`
-                  );
-                  
-                  // Close if already completed
-                  if (todo.isCompleted) {
-                    await jiraClient.closeIssue(jiraSubtask.key);
-                  }
-                  
-                  syncResults.todosCreated++;
-                }
+                jiraSubtask = await jiraClient.createSubtask(
+                  jiraIssue.key,
+                  todo.title,
+                  todo.description || todo.title
+                );
+                
+                // Store JIRA key in DB
+                updateWorkTodoJiraInfo(
+                  todo.id,
+                  jiraSubtask.key,
+                  `https://${jiraSettings.jiraDomain}/browse/${jiraSubtask.key}`
+                );
+                
+                await applyStatus(
+                  jiraSubtask.key,
+                  todo.isCompleted,
+                  todo.inProgress,
+                  jiraSubtask?.fields?.status?.name
+                );
+                
+                syncResults.todosCreated++;
               }
             }
             

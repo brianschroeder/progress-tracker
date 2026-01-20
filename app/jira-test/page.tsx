@@ -142,6 +142,13 @@ export default function JiraTestPage() {
             {loading === 'dry-run-all' ? 'Running...' : 'Dry Run All Goals'}
           </Button>
           <Button
+            onClick={() => callApi('/api/jira/sync', { dryRun: true, forceCreate: true }, 'dry-run-force')}
+            disabled={loading !== null}
+            className="bg-yellow-700 hover:bg-yellow-800"
+          >
+            {loading === 'dry-run-force' ? 'Running...' : 'Dry Run Force Create'}
+          </Button>
+          <Button
             onClick={() => {
               const goalId = prompt('Enter goal ID for dry run:');
               if (goalId) {
@@ -173,6 +180,17 @@ export default function JiraTestPage() {
             className="bg-red-600 hover:bg-red-700"
           >
             {loading === 'sync-all' ? 'Syncing...' : 'Sync All Goals'}
+          </Button>
+          <Button
+            onClick={() => {
+              if (confirm('Are you sure? This will CREATE new issues even if duplicates exist.')) {
+                callApi('/api/jira/sync', { forceCreate: true }, 'sync-force');
+              }
+            }}
+            disabled={loading !== null}
+            className="bg-red-700 hover:bg-red-800"
+          >
+            {loading === 'sync-force' ? 'Syncing...' : 'Force Create All Goals'}
           </Button>
           <Button
             onClick={() => {
