@@ -124,6 +124,8 @@ export interface WorkGoal {
   targetDate: string; // YYYY-MM-DD
   isCompleted: boolean;
   inProgress?: boolean;
+  isHidden?: boolean;
+  isArchived?: boolean;
   priority: 'low' | 'medium' | 'high';
   color: string;
   sortOrder: number;
@@ -137,6 +139,8 @@ export interface WorkTodo {
   description?: string;
   isCompleted: boolean;
   inProgress?: boolean;
+  isHidden?: boolean;
+  isArchived?: boolean;
   sortOrder: number;
   createdAt?: string;
   workGoal?: WorkGoal;

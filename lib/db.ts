@@ -216,6 +216,10 @@ function initializeDatabase() {
   ensureColumn('work_todos', 'jiraIssueKey', 'TEXT');
   ensureColumn('work_todos', 'jiraUrl', 'TEXT');
   ensureColumn('work_todos', 'lastSyncedAt', 'TEXT');
+  ensureColumn('work_goals', 'isHidden', 'BOOLEAN', '0');
+  ensureColumn('work_todos', 'isHidden', 'BOOLEAN', '0');
+  ensureColumn('work_goals', 'isArchived', 'BOOLEAN', '0');
+  ensureColumn('work_todos', 'isArchived', 'BOOLEAN', '0');
 
   // Create comments table
   database.exec(`
@@ -1036,11 +1040,13 @@ export function updateShoppingItem(item: any): boolean {
 
 export function getAllWorkGoals() {
   const database = getDB();
-  const goals = database.prepare('SELECT * FROM work_goals ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
+  const goals = database.prepare('SELECT * FROM work_goals WHERE isArchived = 0 ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
   return goals.map((goal) => ({
     ...goal,
     isCompleted: Boolean(goal.isCompleted),
     inProgress: Boolean(goal.inProgress),
+    isHidden: Boolean(goal.isHidden),
+    isArchived: Boolean(goal.isArchived),
   }));
 }
 
@@ -1052,14 +1058,16 @@ export function getWorkGoalById(id: number) {
     ...goal,
     isCompleted: Boolean(goal.isCompleted),
     inProgress: Boolean(goal.inProgress),
+    isHidden: Boolean(goal.isHidden),
+    isArchived: Boolean(goal.isArchived),
   };
 }
 
 export function createWorkGoal(workGoal: any): number {
   const database = getDB();
   const result = database.prepare(`
-    INSERT INTO work_goals (title, description, targetDate, isCompleted, inProgress, priority, color, sortOrder)
-    VALUES (@title, @description, @targetDate, @isCompleted, @inProgress, @priority, @color, @sortOrder)
+    INSERT INTO work_goals (title, description, targetDate, isCompleted, inProgress, priority, color, sortOrder, isHidden, isArchived)
+    VALUES (@title, @description, @targetDate, @isCompleted, @inProgress, @priority, @color, @sortOrder, @isHidden, @isArchived)
   `).run({
     title: workGoal.title,
     description: workGoal.description || null,
@@ -1069,6 +1077,8 @@ export function createWorkGoal(workGoal: any): number {
     priority: workGoal.priority || 'medium',
     color: workGoal.color || '#3B82F6',
     sortOrder: workGoal.sortOrder || 0,
+    isHidden: workGoal.isHidden ? 1 : 0,
+    isArchived: workGoal.isArchived ? 1 : 0,
   });
 
   return result.lastInsertRowid as number;
@@ -1085,7 +1095,9 @@ export function updateWorkGoal(workGoal: any): boolean {
         inProgress = @inProgress,
         priority = @priority,
         color = @color,
-        sortOrder = @sortOrder
+        sortOrder = @sortOrder,
+        isHidden = @isHidden,
+        isArchived = @isArchived
     WHERE id = @id
   `).run({
     id: workGoal.id,
@@ -1097,6 +1109,8 @@ export function updateWorkGoal(workGoal: any): boolean {
     priority: workGoal.priority || 'medium',
     color: workGoal.color || '#3B82F6',
     sortOrder: workGoal.sortOrder || 0,
+    isHidden: workGoal.isHidden ? 1 : 0,
+    isArchived: workGoal.isArchived ? 1 : 0,
   });
 
   return result.changes > 0;
@@ -1125,21 +1139,25 @@ export function reorderWorkGoals(workGoalIds: number[]): boolean {
 
 export function getAllWorkTodos() {
   const database = getDB();
-  const todos = database.prepare('SELECT * FROM work_todos ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
+  const todos = database.prepare('SELECT * FROM work_todos WHERE isArchived = 0 ORDER BY sortOrder ASC, createdAt DESC').all() as any[];
   return todos.map((todo) => ({
     ...todo,
     isCompleted: Boolean(todo.isCompleted),
     inProgress: Boolean(todo.inProgress),
+    isHidden: Boolean(todo.isHidden),
+    isArchived: Boolean(todo.isArchived),
   }));
 }
 
 export function getWorkTodosByGoalId(workGoalId: number) {
   const database = getDB();
-  const todos = database.prepare('SELECT * FROM work_todos WHERE workGoalId = ? ORDER BY sortOrder ASC, createdAt DESC').all(workGoalId) as any[];
+  const todos = database.prepare('SELECT * FROM work_todos WHERE workGoalId = ? AND isArchived = 0 ORDER BY sortOrder ASC, createdAt DESC').all(workGoalId) as any[];
   return todos.map((todo) => ({
     ...todo,
     isCompleted: Boolean(todo.isCompleted),
     inProgress: Boolean(todo.inProgress),
+    isHidden: Boolean(todo.isHidden),
+    isArchived: Boolean(todo.isArchived),
   }));
 }
 
@@ -1151,14 +1169,16 @@ export function getWorkTodoById(id: number) {
     ...todo,
     isCompleted: Boolean(todo.isCompleted),
     inProgress: Boolean(todo.inProgress),
+    isHidden: Boolean(todo.isHidden),
+    isArchived: Boolean(todo.isArchived),
   };
 }
 
 export function createWorkTodo(workTodo: any): number {
   const database = getDB();
   const result = database.prepare(`
-    INSERT INTO work_todos (workGoalId, title, description, isCompleted, inProgress, sortOrder)
-    VALUES (@workGoalId, @title, @description, @isCompleted, @inProgress, @sortOrder)
+    INSERT INTO work_todos (workGoalId, title, description, isCompleted, inProgress, sortOrder, isHidden, isArchived)
+    VALUES (@workGoalId, @title, @description, @isCompleted, @inProgress, @sortOrder, @isHidden, @isArchived)
   `).run({
     workGoalId: workTodo.workGoalId,
     title: workTodo.title,
@@ -1166,6 +1186,8 @@ export function createWorkTodo(workTodo: any): number {
     isCompleted: workTodo.isCompleted ? 1 : 0,
     inProgress: workTodo.inProgress ? 1 : 0,
     sortOrder: workTodo.sortOrder || 0,
+    isHidden: workTodo.isHidden ? 1 : 0,
+    isArchived: workTodo.isArchived ? 1 : 0,
   });
 
   return result.lastInsertRowid as number;
@@ -1180,7 +1202,9 @@ export function updateWorkTodo(workTodo: any): boolean {
         description = @description,
         isCompleted = @isCompleted,
         inProgress = @inProgress,
-        sortOrder = @sortOrder
+        sortOrder = @sortOrder,
+        isHidden = @isHidden,
+        isArchived = @isArchived
     WHERE id = @id
   `).run({
     id: workTodo.id,
@@ -1190,6 +1214,8 @@ export function updateWorkTodo(workTodo: any): boolean {
     isCompleted: workTodo.isCompleted ? 1 : 0,
     inProgress: workTodo.inProgress ? 1 : 0,
     sortOrder: workTodo.sortOrder || 0,
+    isHidden: workTodo.isHidden ? 1 : 0,
+    isArchived: workTodo.isArchived ? 1 : 0,
   });
 
   return result.changes > 0;

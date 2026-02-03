@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { WorkGoal, WorkTodo } from '@/types';
-import { 
+import {
   PlusIcon, 
   PencilIcon, 
   TrashIcon, 
@@ -10,7 +10,10 @@ import {
   PlayIcon,
   PauseIcon,
   ChevronDownIcon,
-  ChevronUpIcon 
+  ChevronUpIcon,
+  EyeSlashIcon,
+  EyeIcon,
+  ArchiveBoxIcon 
 } from '@heroicons/react/24/solid';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/ui/modal';
@@ -52,6 +55,7 @@ export default function WorkPage() {
   const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null);
   const [expandedGoals, setExpandedGoals] = useState<Set<number>>(new Set());
   const [showFinished, setShowFinished] = useState(false);
+  const [showBacklog, setShowBacklog] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string>('');
   const [goalFormData, setGoalFormData] = useState({
@@ -136,10 +140,12 @@ export default function WorkPage() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...goalFormData,
-            isCompleted: editingGoal.isCompleted,
-            inProgress: editingGoal.inProgress ?? false,
-            sortOrder: editingGoal.sortOrder,
+          ...goalFormData,
+          isCompleted: editingGoal.isCompleted,
+          inProgress: editingGoal.inProgress ?? false,
+          isHidden: editingGoal.isHidden ?? false,
+          isArchived: editingGoal.isArchived ?? false,
+          sortOrder: editingGoal.sortOrder,
           }),
         });
         const updated = await response.json();
@@ -149,10 +155,12 @@ export default function WorkPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...goalFormData,
-            isCompleted: false,
-            inProgress: false,
-            sortOrder: workGoals.length,
+          ...goalFormData,
+          isCompleted: false,
+          inProgress: false,
+          isHidden: false,
+          isArchived: false,
+          sortOrder: workGoals.length,
           }),
         });
         const newGoal = await response.json();
@@ -181,6 +189,47 @@ export default function WorkPage() {
       setWorkGoals(workGoals.map((g) => (g.id === updated.id ? updated : g)));
     } catch (error) {
       console.error('Failed to toggle goal completion:', error);
+    }
+  }
+
+  async function toggleGoalHidden(goal: WorkGoal) {
+    if (!goal.id) return;
+    try {
+      const response = await fetch(`/api/work-goals/${goal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...goal,
+          isHidden: !goal.isHidden,
+        }),
+      });
+      const updated = await response.json();
+      setWorkGoals(workGoals.map((g) => (g.id === updated.id ? updated : g)));
+    } catch (error) {
+      console.error('Failed to toggle goal hidden status:', error);
+    }
+  }
+
+  async function archiveGoal(goal: WorkGoal) {
+    if (!goal.id || !confirm('Archive this goal? It will be removed from the dashboard but kept in the database.')) return;
+    try {
+      const response = await fetch(`/api/work-goals/${goal.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...goal,
+          isArchived: true,
+        }),
+      });
+      const updated = await response.json();
+      // Remove from local state since it's archived
+      setWorkGoals(workGoals.filter((g) => g.id !== goal.id));
+      // Also remove its todos from local state
+      const newTodos = { ...workTodos };
+      delete newTodos[goal.id];
+      setWorkTodos(newTodos);
+    } catch (error) {
+      console.error('Failed to archive goal:', error);
     }
   }
 
@@ -248,11 +297,13 @@ export default function WorkPage() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...todoFormData,
-            workGoalId: selectedGoalId,
-            isCompleted: editingTodo.isCompleted,
-            inProgress: editingTodo.inProgress ?? false,
-            sortOrder: editingTodo.sortOrder,
+          ...todoFormData,
+          workGoalId: selectedGoalId,
+          isCompleted: editingTodo.isCompleted,
+          inProgress: editingTodo.inProgress ?? false,
+          isHidden: editingTodo.isHidden ?? false,
+          isArchived: editingTodo.isArchived ?? false,
+          sortOrder: editingTodo.sortOrder,
           }),
         });
         const updated = await response.json();
@@ -268,11 +319,13 @@ export default function WorkPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...todoFormData,
-            workGoalId: selectedGoalId,
-            isCompleted: false,
-            inProgress: false,
-            sortOrder: goalTodos.length,
+          ...todoFormData,
+          workGoalId: selectedGoalId,
+          isCompleted: false,
+          inProgress: false,
+          isHidden: false,
+          isArchived: false,
+          sortOrder: goalTodos.length,
           }),
         });
         const newTodo = await response.json();
@@ -349,6 +402,50 @@ export default function WorkPage() {
     }
   }
 
+  async function toggleTodoHidden(todo: WorkTodo) {
+    if (!todo.id) return;
+    try {
+      const response = await fetch(`/api/work-todos/${todo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...todo,
+          isHidden: !todo.isHidden,
+        }),
+      });
+      const updated = await response.json();
+      setWorkTodos({
+        ...workTodos,
+        [todo.workGoalId]: workTodos[todo.workGoalId].map((t) =>
+          t.id === updated.id ? updated : t
+        ),
+      });
+    } catch (error) {
+      console.error('Failed to toggle todo hidden status:', error);
+    }
+  }
+
+  async function archiveTodo(todo: WorkTodo) {
+    if (!todo.id || !confirm('Archive this task? It will be removed from the dashboard but kept in the database.')) return;
+    try {
+      await fetch(`/api/work-todos/${todo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...todo,
+          isArchived: true,
+        }),
+      });
+      // Remove from local state since it's archived
+      setWorkTodos({
+        ...workTodos,
+        [todo.workGoalId]: workTodos[todo.workGoalId].filter((t) => t.id !== todo.id),
+      });
+    } catch (error) {
+      console.error('Failed to archive todo:', error);
+    }
+  }
+
   function toggleGoalExpansion(goalId: number) {
     const newExpanded = new Set(expandedGoals);
     if (newExpanded.has(goalId)) {
@@ -404,13 +501,14 @@ export default function WorkPage() {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const activeGoals = workGoals.filter(g => !g.isCompleted);
+      const activeGoals = workGoals.filter(g => !g.isCompleted && !g.isHidden);
       const oldIndex = activeGoals.findIndex((goal) => goal.id === active.id);
       const newIndex = activeGoals.findIndex((goal) => goal.id === over.id);
 
       const newActiveGoals = arrayMove(activeGoals, oldIndex, newIndex);
       const completedGoals = workGoals.filter(g => g.isCompleted);
-      const newGoals = [...newActiveGoals, ...completedGoals];
+      const hiddenGoals = workGoals.filter(g => g.isHidden);
+      const newGoals = [...newActiveGoals, ...completedGoals, ...hiddenGoals];
       setWorkGoals(newGoals);
 
       // Update order in backend
@@ -544,10 +642,28 @@ export default function WorkPage() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              onClick={() => toggleTodoHidden(todo)}
+              className="p-1 hover:bg-gray-100 rounded"
+              title={todo.isHidden ? 'Unhide from backlog' : 'Hide to backlog'}
+            >
+              {todo.isHidden ? (
+                <EyeIcon className="w-4 h-4 text-gray-500" />
+              ) : (
+                <EyeSlashIcon className="w-4 h-4 text-gray-500" />
+              )}
+            </button>
+            <button
               onClick={() => openEditTodoModal(todo)}
               className="p-1 hover:bg-gray-100 rounded"
             >
               <PencilIcon className="w-4 h-4 text-gray-500" />
+            </button>
+            <button
+              onClick={() => archiveTodo(todo)}
+              className="p-1 hover:bg-gray-100 rounded"
+              title="Archive (remove from dashboard)"
+            >
+              <ArchiveBoxIcon className="w-4 h-4 text-orange-500" />
             </button>
             <button
               onClick={() => deleteTodo(todo)}
@@ -688,18 +804,40 @@ export default function WorkPage() {
                     <ChevronDownIcon className="w-5 h-5 text-gray-500" />
                   )}
                 </button>
-                <button
-                  onClick={() => openEditGoalModal(goal)}
-                  className="p-1 hover:bg-gray-100 rounded"
-                >
-                  <PencilIcon className="w-5 h-5 text-gray-500" />
-                </button>
-                <button
-                  onClick={() => deleteGoal(goal.id!)}
-                  className="p-1 hover:bg-gray-100 rounded"
-                >
-                  <TrashIcon className="w-5 h-5 text-red-500" />
-                </button>
+                {isExpanded && (
+                  <>
+                    <button
+                      onClick={() => toggleGoalHidden(goal)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title={goal.isHidden ? 'Unhide from backlog' : 'Hide to backlog'}
+                    >
+                      {goal.isHidden ? (
+                        <EyeIcon className="w-5 h-5 text-gray-500" />
+                      ) : (
+                        <EyeSlashIcon className="w-5 h-5 text-gray-500" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => openEditGoalModal(goal)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <PencilIcon className="w-5 h-5 text-gray-500" />
+                    </button>
+                    <button
+                      onClick={() => archiveGoal(goal)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title="Archive (remove from dashboard)"
+                    >
+                      <ArchiveBoxIcon className="w-5 h-5 text-orange-500" />
+                    </button>
+                    <button
+                      onClick={() => deleteGoal(goal.id!)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <TrashIcon className="w-5 h-5 text-red-500" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -723,7 +861,7 @@ export default function WorkPage() {
                 </Button>
               </div>
 
-              {todos.length === 0 ? (
+              {todos.filter(t => !t.isHidden).length === 0 ? (
                 <p className="text-gray-500 text-sm">No tasks yet</p>
               ) : (
                 <DndContext
@@ -732,11 +870,11 @@ export default function WorkPage() {
                   onDragEnd={(e) => handleTodoDragEnd(e, goal.id!)}
                 >
                   <SortableContext
-                    items={todos.map(t => t.id!)}
+                    items={todos.filter(t => !t.isHidden).map(t => t.id!)}
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="space-y-2">
-                      {todos.map((todo) => (
+                      {todos.filter(t => !t.isHidden).map((todo) => (
                         <SortableTodoItem key={todo.id} todo={todo} />
                       ))}
                     </div>
@@ -768,7 +906,7 @@ export default function WorkPage() {
   const goalTitleById = new Map(workGoals.map((goal) => [goal.id, goal.title]));
   const goalOrderById = new Map(workGoals.map((goal) => [goal.id, goal.sortOrder ?? 0]));
   const inProgressTodos = allTodos
-    .filter((todo) => todo.inProgress && !todo.isCompleted)
+    .filter((todo) => todo.inProgress && !todo.isCompleted && !todo.isHidden)
     .sort((a, b) => {
       const goalOrderDiff = (goalOrderById.get(a.workGoalId) ?? 0) - (goalOrderById.get(b.workGoalId) ?? 0);
       if (goalOrderDiff !== 0) return goalOrderDiff;
@@ -882,18 +1020,226 @@ export default function WorkPage() {
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={workGoals.filter(g => !g.isCompleted).map(g => g.id!)}
+                  items={workGoals.filter(g => !g.isCompleted && !g.isHidden).map(g => g.id!)}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-4">
                     {workGoals
-                      .filter(g => !g.isCompleted)
+                      .filter(g => !g.isCompleted && !g.isHidden)
                       .map((goal) => (
                         <SortableGoalCard key={goal.id} goal={goal} />
                       ))}
                   </div>
                 </SortableContext>
               </DndContext>
+
+              {/* Backlog Section */}
+              {workGoals.filter(g => g.isHidden && !g.isCompleted).length > 0 && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => setShowBacklog(!showBacklog)}
+                    className="w-full flex items-center justify-between p-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <EyeSlashIcon className="w-5 h-5 text-gray-500" />
+                      <span className="font-semibold text-gray-700">
+                        Backlog ({workGoals.filter(g => g.isHidden && !g.isCompleted).length})
+                      </span>
+                    </div>
+                    {showBacklog ? (
+                      <ChevronUpIcon className="w-5 h-5 text-gray-500" />
+                    ) : (
+                      <ChevronDownIcon className="w-5 h-5 text-gray-500" />
+                    )}
+                  </button>
+
+                  {showBacklog && (
+                    <div className="mt-4 space-y-4">
+                      {workGoals
+                        .filter(g => g.isHidden && !g.isCompleted)
+                        .map((goal) => {
+                          if (!goal.id) return null;
+                          const todos = workTodos[goal.id] || [];
+                          const isExpanded = expandedGoals.has(goal.id);
+                          const completedTodos = todos.filter((t) => t.isCompleted).length;
+                          const totalTodos = todos.length;
+
+                          return (
+                            <div
+                              key={goal.id}
+                              className="bg-white rounded-lg shadow overflow-hidden opacity-75"
+                              style={{ borderLeft: `4px solid ${priorityColors[goal.priority]}` }}
+                            >
+                              {/* Goal Header */}
+                              <div className="p-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex items-start gap-3 flex-1">
+                                    <div className="flex-1">
+                                      <h3 className="text-lg font-semibold text-gray-900">
+                                        {goal.title}
+                                      </h3>
+                                      {goal.description && (
+                                        <p className="text-gray-600 text-sm mt-1">{goal.description}</p>
+                                      )}
+                                      <div className="flex items-center gap-4 mt-2 text-sm">
+                                        {goal.targetDate && (
+                                          <span className="text-gray-500">
+                                            Due: {new Date(goal.targetDate).toLocaleDateString()}
+                                          </span>
+                                        )}
+                                        <span className="text-gray-500">
+                                          {completedTodos}/{totalTodos} todos completed
+                                        </span>
+                                        <span
+                                          className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                                          style={{ backgroundColor: priorityColors[goal.priority] }}
+                                        >
+                                          {goal.priority}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => toggleGoalExpansion(goal.id!)}
+                                      className="p-1 hover:bg-gray-100 rounded"
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronUpIcon className="w-5 h-5 text-gray-500" />
+                                      ) : (
+                                        <ChevronDownIcon className="w-5 h-5 text-gray-500" />
+                                      )}
+                                    </button>
+                                    {isExpanded && (
+                                      <>
+                                        <button
+                                          onClick={() => toggleGoalHidden(goal)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                          title="Unhide from backlog"
+                                        >
+                                          <EyeIcon className="w-5 h-5 text-gray-500" />
+                                        </button>
+                                        <button
+                                          onClick={() => openEditGoalModal(goal)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                        >
+                                          <PencilIcon className="w-5 h-5 text-gray-500" />
+                                        </button>
+                                        <button
+                                          onClick={() => archiveGoal(goal)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                          title="Archive (remove from dashboard)"
+                                        >
+                                          <ArchiveBoxIcon className="w-5 h-5 text-orange-500" />
+                                        </button>
+                                        <button
+                                          onClick={() => deleteGoal(goal.id!)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                        >
+                                          <TrashIcon className="w-5 h-5 text-red-500" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Todos Section */}
+                              {isExpanded && (
+                                <div className="border-t border-gray-200 bg-gray-50 p-4">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-semibold text-gray-700">Tasks</h4>
+                                    <Button
+                                      onClick={() => openAddTodoModal(goal.id!)}
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex items-center gap-1 text-xs"
+                                    >
+                                      <PlusIcon className="w-4 h-4" />
+                                      Add Task
+                                    </Button>
+                                  </div>
+
+                                  {todos.length === 0 ? (
+                                    <p className="text-gray-500 text-sm">No tasks yet</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {todos.map((todo) => (
+                                        <div
+                                          key={todo.id}
+                                          className="flex flex-col bg-white rounded border border-gray-200"
+                                        >
+                                          <div className="flex items-start gap-2 p-3">
+                                            <button
+                                              onClick={() => toggleTodoComplete(todo)}
+                                              className="mt-0.5"
+                                            >
+                                              <CheckCircleIcon
+                                                className={`w-5 h-5 ${
+                                                  todo.isCompleted
+                                                    ? 'text-green-500'
+                                                    : 'text-gray-300 hover:text-gray-400'
+                                                }`}
+                                              />
+                                            </button>
+                                            <div className="flex-1">
+                                              <p
+                                                className={`text-sm ${
+                                                  todo.isCompleted
+                                                    ? 'line-through text-gray-400'
+                                                    : 'text-gray-900'
+                                                }`}
+                                              >
+                                                {todo.title}
+                                              </p>
+                                              {todo.description && (
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                  {todo.description}
+                                                </p>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                onClick={() => toggleTodoHidden(todo)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                                title="Unhide from backlog"
+                                              >
+                                                <EyeIcon className="w-4 h-4 text-gray-500" />
+                                              </button>
+                                              <button
+                                                onClick={() => openEditTodoModal(todo)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                              >
+                                                <PencilIcon className="w-4 h-4 text-gray-500" />
+                                              </button>
+                                              <button
+                                                onClick={() => archiveTodo(todo)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                                title="Archive (remove from dashboard)"
+                                              >
+                                                <ArchiveBoxIcon className="w-4 h-4 text-orange-500" />
+                                              </button>
+                                              <button
+                                                onClick={() => deleteTodo(todo)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                              >
+                                                <TrashIcon className="w-4 h-4 text-red-500" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Finished Goals Section */}
               {workGoals.filter(g => g.isCompleted).length > 0 && (
@@ -988,18 +1334,29 @@ export default function WorkPage() {
                                         <ChevronDownIcon className="w-5 h-5 text-gray-500" />
                                       )}
                                     </button>
-                                    <button
-                                      onClick={() => openEditGoalModal(goal)}
-                                      className="p-1 hover:bg-gray-100 rounded"
-                                    >
-                                      <PencilIcon className="w-5 h-5 text-gray-500" />
-                                    </button>
-                                    <button
-                                      onClick={() => deleteGoal(goal.id!)}
-                                      className="p-1 hover:bg-gray-100 rounded"
-                                    >
-                                      <TrashIcon className="w-5 h-5 text-red-500" />
-                                    </button>
+                                    {isExpanded && (
+                                      <>
+                                        <button
+                                          onClick={() => openEditGoalModal(goal)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                        >
+                                          <PencilIcon className="w-5 h-5 text-gray-500" />
+                                        </button>
+                                        <button
+                                          onClick={() => archiveGoal(goal)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                          title="Archive (remove from dashboard)"
+                                        >
+                                          <ArchiveBoxIcon className="w-5 h-5 text-orange-500" />
+                                        </button>
+                                        <button
+                                          onClick={() => deleteGoal(goal.id!)}
+                                          className="p-1 hover:bg-gray-100 rounded"
+                                        >
+                                          <TrashIcon className="w-5 h-5 text-red-500" />
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1020,7 +1377,7 @@ export default function WorkPage() {
                                     </Button>
                                   </div>
 
-                                  {todos.length === 0 ? (
+                                  {todos.filter(t => !t.isHidden).length === 0 ? (
                                     <p className="text-gray-500 text-sm">No tasks yet</p>
                                   ) : (
                                     <DndContext
@@ -1029,11 +1386,11 @@ export default function WorkPage() {
                                       onDragEnd={(e) => handleTodoDragEnd(e, goal.id!)}
                                     >
                                       <SortableContext
-                                        items={todos.map(t => t.id!)}
+                                        items={todos.filter(t => !t.isHidden).map(t => t.id!)}
                                         strategy={verticalListSortingStrategy}
                                       >
                                         <div className="space-y-2">
-                                          {todos.map((todo) => (
+                                          {todos.filter(t => !t.isHidden).map((todo) => (
                                             <SortableTodoItem key={todo.id} todo={todo} />
                                           ))}
                                         </div>
